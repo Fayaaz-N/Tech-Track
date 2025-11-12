@@ -50,18 +50,28 @@ const data = [
 
 // hulpfunctie die objecten uit array data transformeret naar het gewenste formaat
 // en het object teruggeeft
+
 function transformPerson(myPerson) {
-    myPerson.forEach(person => {
-        let myParam = {
-            name: person.name,
-            age: Number(person.age),
-            residence: person.residence,
-            siblings: person.siblings,
-            work: person.work,
-        }
-        console.log(transformPerson(myParam));
-    })
+    return myPerson.map(person =>  {
+        return {
+            name: person.name[0].toUpperCase() + person.name.slice(1),
+            age: Number.parseInt(person.age),
+            residence: person.residence[0].toUpperCase() + person.residence.slice(1)
+        };
+    });
 }
+// console.log(transformPerson(data));
+console.log(transformPerson(data.filter(person => person.age >= 27 )));
+// console.log(transformPerson(data.filter(person => person.name == 'berend' )));
+
+
+
+// transformeer het hele array met de map-functie, en toon de objecten
+// die personen representeren die ouder zijn dan 26
+
+
+
+
 
 // toon het object dat Berend representeert in de console
 
@@ -69,5 +79,3 @@ function transformPerson(myPerson) {
 // transformeer het hele array met de map-functie, en toon het resultaat
 
 
-// transformeer het hele array met de map-functie, en toon de objecten
-// die personen representeren die ouder zijn dan 26
