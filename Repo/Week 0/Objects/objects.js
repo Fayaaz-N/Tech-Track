@@ -48,7 +48,7 @@ function transformArrOfObj(myObj) {
     /* Write your functionality here and return the result */
 
     let myPerson = {
-        name: ;
+        name: ''
     }
 
     console.log(data[0])
