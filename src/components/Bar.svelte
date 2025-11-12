@@ -22,7 +22,7 @@
 
 <script>
     import { onMount } from 'svelte';
-    import { fetchRdw } from '$lib/fetchData.js';
+    import { fetchRdw } from '../lib/fetchData.js';
 
     let rows = [];
 
