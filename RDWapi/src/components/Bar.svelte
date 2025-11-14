@@ -1,82 +1,161 @@
-<!--<script>-->
-<!--  import * as d3 from "d3";-->
-<!--  import { onMount } from 'svelte';-->
-
-<!--  onMount(() => {-->
-<!--    d3.select('p')-->
-<!--    .text('Test')-->
-<!--  });-->
-
-
-
-<!--</script>-->
-
-<!--<p></p>-->
-
-<!--<style>-->
-<!--  p {-->
-<!--    font-size: 5em;-->
-<!--    color: orange;-->
-<!--  }-->
-<!--</style>-->
-
-<!--<script>-->
-<!--    import { onMount } from 'svelte';-->
-<!--    import { fetchRdw } from '../lib/fetchData.js';-->
-
-<!--    let rows = [];-->
-
-<!--    onMount(async () => {-->
-<!--        rows = await fetchRdw(1000); // 10 regels-->
-<!--        console.log('Eerste 10:', rows);-->
-<!--    });-->
-<!--</script>-->
-
-<!--<h3>Eerste 10 voertuigen</h3>-->
-<!--<ul>-->
-<!--    {#each rows as r}-->
-<!--        <li>-->
-<!--            <strong>{r.kenteken}</strong> — {r.merk} {r.handelsbenaming} - {r.eerste_kleur} - {r.datum_eerste_tenaamstelling_in_nederland} - {r.hoogte_voertuig}-->
-<!--        </li>-->
-<!--    {/each}-->
-<!--</ul>-->
-
-
-
-
 <script>
     import { onMount } from 'svelte';
-    import { fetchRdwSUVs } from '$lib/fetchData.js';
+    import { fetchRdwMPVs, fetchRdwMpvMerken } from '$lib/fetchData.js';
+    // ↑ pad eventueel aanpassen
 
-    let rows = [];
+    // lijst met merken voor de <select>
+    let merken = [];
+    let selectedMerk = '';
+
+    // ruwe voertuigen uit de API
+    let vehicles = [];
+
+    // samenvatting per jaar: [{ jaar: 2020, aantal: 123 }, ...]
+    let jaarStats = [];
+
+    let loading = false;
     let error = '';
 
-    onMount(async () => {
+    // bij het laden van de pagina: merken ophalen
+    onMount(async function () {
+        loading = true;
+        error = '';
+
         try {
-            rows = await fetchRdwSUVs(15000, 0);
-            console.log('SUVs:', rows);
+            // haalt alle merken op die een MPV hebben in jouw jaarrange
+            merken = await fetchRdwMpvMerken(); // gebruikt default 2020–2025
+
+            if (merken.length > 0) {
+                selectedMerk = merken[0];
+            }
         } catch (e) {
-            error = e.message || String(e);
-            console.error(e);
+            error = e && e.message ? e.message : String(e);
+        } finally {
+            loading = false;
         }
     });
+
+    // wordt aangeroepen als je op de knop klikt
+    async function laadData() {
+        if (!selectedMerk) {
+            return;
+        }
+
+        loading = true;
+        error = '';
+        vehicles = [];
+        jaarStats = [];
+
+        try {
+            // 1. auto's ophalen voor het gekozen merk
+            vehicles = await fetchRdwMPVs(selectedMerk);
+
+            // 2. samenvatting per jaar maken
+            jaarStats = maakJaarStats(vehicles);
+        } catch (e) {
+            error = e && e.message ? e.message : String(e);
+        } finally {
+            loading = false;
+        }
+    }
+
+    // maakt van de voertuigen een lijst met { jaar, aantal }
+    function maakJaarStats(vehicles) {
+        // 1. auto's met een datum pakken
+        const autosMetDatum = vehicles.filter(function (auto) {
+            return auto.datumEersteTenaamstellingNL;
+        });
+
+        // 2. per auto alleen het jaartal eruit halen
+        const jaren = autosMetDatum.map(function (auto) {
+            const datumString = String(auto.datumEersteTenaamstellingNL); // "20200115"
+            const jaarString = datumString.slice(0, 4); // "2020"
+            const jaarNummer = Number(jaarString);      // 2020
+            return jaarNummer;
+        });
+
+        // 3. met reduce tellen hoeveel auto's per jaar
+        const tellingPerJaar = jaren.reduce(function (acc, jaar) {
+            if (!acc[jaar]) {
+                acc[jaar] = 0;
+            }
+
+            acc[jaar] = acc[jaar] + 1;
+            return acc;
+        }, {}); // start met leeg object
+
+        // 4. omzetten naar array zodat Svelte erover kan loopen
+        const jaarArray = Object.keys(tellingPerJaar).map(function (jaarKey) {
+            return {
+                jaar: Number(jaarKey),
+                aantal: tellingPerJaar[jaarKey]
+            };
+        });
+
+        // 5. sorteren op jaar
+        jaarArray.sort(function (a, b) {
+            return a.jaar - b.jaar;
+        });
+
+        return jaarArray;
+    }
 </script>
 
-{#if error}<p style="color:red">{error}</p>{/if}
+<!-- MERK KIEZEN -->
+<div>
+    <label for="merk-select">Kies een merk (met MPV's):</label>
+    <select
+            id="merk-select"
+            bind:value={selectedMerk}
+            disabled={loading || merken.length === 0}
+    >
+        {#each merken as merk}
+            <option value={merk}>{merk}</option>
+        {/each}
+    </select>
+</div>
 
-<h3>Top 10 SUV’s met hoogte</h3>
-<ol>
-    {#each rows as r}
-        <li>
-            <strong>{r.kenteken}</strong> — {r.merk} {r.handelsbenaming} - {r.voertuigsoort} - {r.inrichting} - {r.tellerstandoordeel}
-            <strong>{r.aantal_eigenaren}</strong>
-            <small>
-                | bouwjaar: {r.bouwjaar ?? '-'}
-                | kleur: {r.kleur ?? '-'}
-                | hoogte: {r.hoogte_voertuig ?? '-'}
-                | deurs: {r.aantal_deuren ?? '-'}
-                | inschrijving NL: {r.inschrijving_nl ?? '-'}
-            </small>
-        </li>
-    {/each}
-</ol>
+<!-- KNOP OM DATA TE LADEN -->
+<div style="margin-top: 1rem;">
+    <button on:click={laadData} disabled={loading || !selectedMerk}>
+        {#if loading}
+            Bezig met laden...
+        {:else}
+            Laad gegevens
+        {/if}
+    </button>
+</div>
+
+<!-- FOUTMELDING -->
+{#if error}
+    <p style="color: red; margin-top: 1rem;">
+        Fout: {error}
+    </p>
+{/if}
+
+<!-- AANTAL AUTO'S PER JAAR -->
+{#if jaarStats.length > 0}
+    <h2 style="margin-top: 2rem;">
+        Aantal MPV's per jaar voor {selectedMerk}
+    </h2>
+
+    <ul>
+        {#each jaarStats as rij}
+            <li>
+                {rij.jaar} → {rij.aantal} auto's
+            </li>
+        {/each}
+    </ul>
+{/if}
+
+<!-- (extra) Geef de hele lijst met voertuigen weer. -->
+<!--{#if vehicles.length > 0}-->
+<!--    <h3 style="margin-top: 2rem;">Ruwe voertuigen (controle)</h3>-->
+<!--    <ol>-->
+<!--        {#each vehicles as v}-->
+<!--            <li>-->
+<!--                {v.kenteken} — {v.merk} {v.handelsbenaming}-->
+<!--            </li>-->
+<!--        {/each}-->
+<!--    </ol>-->
+<!--{/if}-->
