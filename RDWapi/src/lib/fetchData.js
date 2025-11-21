@@ -1,24 +1,75 @@
-// Token uit Vite (.env): VITE_RDW_APP_TOKEN=...
+// RDW configuratie
+
 const APP_TOKEN = import.meta.env?.VITE_RDW_APP_TOKEN;
+const RDW_BASE_URL = 'https://opendata.rdw.nl/resource/m9d7-ebf2.json';
 
 
-//Hier stel ik het verzoek en de criteria op voor de user en zijn keuze. .
-export async function fetchRdwMPVs(
-    merk,                                // alleen  het merk krijgt een value, de rest heb ik later nodig in de filtering
+// Helpers
+
+// Maakt een string veilig voor gebruik in een $where-filter
+const escapeForWhere = (value) =>
+    String(value).replace(/'/g, "''");
+
+// Bouwt een datumrange in YYYYMMDD op basis van jaartallen
+const getDateRange = (startYear, endYear) => ({
+    startDate: `${startYear}0101`,
+    endDate: `${endYear}1231`
+});
+
+// Maakt een RDW-URL met optioneel $select
+const createRdwUrl = (selectFields) => {
+    const url = new URL(RDW_BASE_URL);
+
+    if (Array.isArray(selectFields)) {
+        url.searchParams.set('$select', selectFields.join(','));
+    } else if (typeof selectFields === 'string') {
+        url.searchParams.set('$select', selectFields);
+    }
+
+    return url;
+};
+
+// Doet het RDW-verzoek en geeft JSON terug
+const fetchRdwJson = async (url) => {
+    const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
+
+    const res = await fetch(url.toString(), { headers });
+
+    if (!res.ok) {
+        const text = await res.text().catch(() => '');
+        throw new Error(`HTTP ${res.status}: ${text}`);
+    }
+
+    return res.json();
+};
+
+
+
+/**
+ * Haalt personenauto’s op bij de RDW op basis van filters.
+ *
+ * @param {string} merk
+ * @param {number} startYear
+ * @param {number} endYear
+ * @param {string} [inrichting]
+ * @param {number} [limit]
+ * @param {number} [offset]
+ * @returns {Promise<Array>}
+ */
+export const fetchRdwMPVs = async (
+    merk,
     startYear = 2020,
     endYear = 2025,
-    limit = 150000,
+    inrichting,
+    limit = 15000000,
     offset = 0
-) {
+) => {
     if (!merk) {
         throw new Error('fetchRdwMPVs: merk is verplicht');
     }
 
-    //Hier connect ik met de API
-    const url = new URL('https://opendata.rdw.nl/resource/m9d7-ebf2.json');
-
-    // Hier roep ik de verschillende velden die ik wil ophalen.
-    url.searchParams.set('$select', [
+    // velden die nodig zijn voor lijsten en grafieken
+    const url = createRdwUrl([
         'kenteken',
         'merk',
         'handelsbenaming',
@@ -27,45 +78,41 @@ export async function fetchRdwMPVs(
         'aantal_deuren',
         'datum_eerste_toelating',
         'datum_eerste_tenaamstelling_in_nederland',
-        'hoogte_voertuig'
-    ].join(','));
+        'hoogte_voertuig',
+        'eerste_kleur',
+        'tweede_kleur'
+    ]);
 
+    // paginering
     url.searchParams.set('$limit', String(limit));
     url.searchParams.set('$offset', String(offset));
 
-    //De datums komen anders binnen als 20250102 - 2 Januari 2025.
-    const startDate = `${startYear}0101`;
-    const endDate = `${endYear}1231`;
+    // jaarrange naar datumrange
+    const { startDate, endDate } = getDateRange(startYear, endYear);
 
-    //Hier filter in de API
-    url.searchParams.set(
-        '$where',
-        [
-            `merk = '${merk.toUpperCase()}'`,
-            `datum_eerste_tenaamstelling_in_nederland between ${startDate} and ${endDate}`,
-            `inrichting = 'MPV'`
-        ].join(' AND ')
-    );
+    // basisfilters
+    const whereDelen = [
+        `merk = '${escapeForWhere(merk).toUpperCase()}'`,
+        `datum_eerste_tenaamstelling_in_nederland between ${startDate} and ${endDate}`,
+        `voertuigsoort = 'Personenauto'`
+    ];
 
-    //Stuur app token mee
-    const res = await fetch(url.toString(), {
-        headers: APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : undefined
-    });
-
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text}`);
+    // inrichting (optioneel)
+    if (inrichting && inrichting !== 'ALLE') {
+        const netteInrichting = escapeForWhere(String(inrichting).trim());
+        whereDelen.push(`inrichting = '${netteInrichting}'`);
     }
 
-    //Zet alle data om
-    const data = await res.json();
+    url.searchParams.set('$where', whereDelen.join(' AND '));
 
-    //Extra filtering voor de zekerheid
-    const filtered = data
-        .filter((item) => item.inrichting === 'MPV')
-        .filter((item) => !!item.datum_eerste_tenaamstelling_in_nederland);
+    const data = await fetchRdwJson(url);
 
-    //Variabelen netjes
+    // alleen records met datum in NL
+    const filtered = data.filter(
+        (item) => !!item.datum_eerste_tenaamstelling_in_nederland
+    );
+
+    // data normaliseren
     return filtered.map((item) => ({
         kenteken: item.kenteken,
         merk: item.merk,
@@ -75,87 +122,180 @@ export async function fetchRdwMPVs(
         aantalDeuren: item.aantal_deuren ? Number(item.aantal_deuren) : null,
         datumEersteToelating: item.datum_eerste_toelating,
         datumEersteTenaamstellingNL: item.datum_eerste_tenaamstelling_in_nederland,
-        hoogteVoertuig: item.hoogte_voertuig ? Number(item.hoogte_voertuig) : null
+        hoogteVoertuig: item.hoogte_voertuig ? Number(item.hoogte_voertuig) : null,
+        eersteKleur: item.eerste_kleur || null,
+        tweedeKleur: item.tweede_kleur || null
     }));
-}
+
+};
 
 
 
+/**
+ * Haalt unieke merken op (personenauto’s) binnen een jaarrange.
+ *
+ * @param {number} startYear
+ * @param {number} endYear
+ * @returns {Promise<string[]>}
+ */
+export const fetchRdwMpvMerken = async (
+    startYear = 2020,
+    endYear = 2025
+) => {
+    const url = createRdwUrl('merk');
 
-//Deze functie zorgt er voor dat de input field voor het merk word gevuid met de beschikbare MPV's
-export async function fetchRdwMpvMerken(startYear = 2020, endYear = 2025) {
+    const { startDate, endDate } = getDateRange(startYear, endYear);
 
-    const url = new URL('https://opendata.rdw.nl/resource/m9d7-ebf2.json');
+    const whereDelen = [
+        `datum_eerste_tenaamstelling_in_nederland between ${startDate} and ${endDate}`,
+        `voertuigsoort = 'Personenauto'`
+    ];
 
-    const startDate = `${startYear}0101`;
-    const endDate = `${endYear}1231`;
+    url.searchParams.set('$where', whereDelen.join(' AND '));
+    url.searchParams.set('$group', 'merk');
 
-    url.searchParams.set('$select', 'merk');
+    const data = await fetchRdwJson(url);
+
+    return data
+        .map((item) => item.merk)
+        .filter((merk) => !!merk)
+        .sort((a, b) => a.localeCompare(b));
+};
+
+
+
+/**
+ * Haalt unieke inrichtingen op voor een merk binnen een jaarrange.
+ *
+ * @param {string} merk
+ * @param {number} startYear
+ * @param {number} endYear
+ * @returns {Promise<string[]>}
+ */
+export const fetchRdwInrichtingen = async (
+    merk,
+    startYear = 2020,
+    endYear = 2025
+) => {
+    if (!merk) {
+        throw new Error('fetchRdwInrichtingen: merk is verplicht');
+    }
+
+    const url = createRdwUrl('inrichting');
+
+    const { startDate, endDate } = getDateRange(startYear, endYear);
+
     url.searchParams.set(
         '$where',
         [
-            `inrichting = 'MPV'`,
-            `datum_eerste_tenaamstelling_in_nederland between ${startDate} and ${endDate}`
+            `merk = '${escapeForWhere(merk).toUpperCase()}'`,
+            `datum_eerste_tenaamstelling_in_nederland between ${startDate} and ${endDate}`,
+            `voertuigsoort = 'Personenauto'`
         ].join(' AND ')
     );
-    url.searchParams.set('$group', 'merk');
+
+    url.searchParams.set('$group', 'inrichting');
     url.searchParams.set('$limit', '50000');
 
-    const res = await fetch(url.toString(), {
-        headers: APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : undefined
-    });
-
-    if (!res.ok) {
-        const text = await res.text();
-        throw new Error(`HTTP ${res.status}: ${text}`);
-    }
-
-    const data = await res.json();
+    const data = await fetchRdwJson(url);
 
     return data
-        .map(item => item.merk)
-        .filter(Boolean)
+        .map((item) => (item.inrichting || '').trim())
+        .filter((inrichting) => inrichting.length > 0)
         .sort((a, b) => a.localeCompare(b));
-}
+};
 
 
 
-function maakJaarStats(vehicles) {
-    // 1. eerst alle auto's met een datum pakken
-    const autosMetDatum = vehicles.filter(function (auto) {
-        return auto.datumEersteTenaamstellingNL;
+/**
+ * Maakt telling per jaar op basis van voertuigenlijst.
+ * Output is geschikt voor meerdere soorten grafieken.
+ *
+ * @param {Array} vehicles
+ * @returns {{ jaar: number, aantal: number }[]}
+ */
+export const maakJaarStats = (vehicles) => {
+    // voertuigen met datum
+    const autosMetDatum = vehicles.filter(
+        (auto) => auto.datumEersteTenaamstellingNL
+    );
+
+    // jaartal uit datum halen
+    const jaren = autosMetDatum.map((auto) => {
+        const datumString = String(auto.datumEersteTenaamstellingNL); // YYYYMMDD
+        const jaarString = datumString.slice(0, 4);
+        return Number(jaarString);
     });
 
-    // 2. daarna met map alleen het jaar uit de datum halen
-    const jaren = autosMetDatum.map(function (auto) {
-        const datumString = String(auto.datumEersteTenaamstellingNL); // "20200115"
-        const jaarString = datumString.slice(0, 4); // "2020"
-        const jaarNummer = Number(jaarString);      // 2020
-        return jaarNummer;
-    });
-
-    // 3. nu met reduce tellen hoeveel auto's per jaar
-    const tellingPerJaar = jaren.reduce(function (acc, jaar) {
+    // per jaar tellen
+    const tellingPerJaar = jaren.reduce((acc, jaar) => {
         if (!acc[jaar]) {
             acc[jaar] = 0;
         }
-
-        acc[jaar] = acc[jaar] + 1;
+        acc[jaar] += 1;
         return acc;
-    }, {}); // start met leeg object
+    }, {});
 
-    // 4. object → array omzetten
-    const jaarArray = Object.keys(tellingPerJaar).map(function (jaarKey) {
-        return {
-            jaar: Number(jaarKey),
-            aantal: tellingPerJaar[jaarKey]
-        };
-    });
+    // omzetten naar array
+    const jaarArray = Object.keys(tellingPerJaar).map((jaarKey) => ({
+        jaar: Number(jaarKey),
+        aantal: tellingPerJaar[jaarKey]
+    }));
 
-    // 5. sorteren op jaar
-    jaarArray.sort(function (a, b) {
-        return a.jaar - b.jaar;
-    });
+    // sorteren op jaar
+    jaarArray.sort((a, b) => a.jaar - b.jaar);
 
     return jaarArray;
-}
+};
+
+
+
+
+//Kleuren kiezen vanuit de data
+// normaliseert een kleurnaam zodat gelijksoortige varianten gelijk vallen
+const normalizeColor = (raw) => {
+    if (!raw) return null;
+
+    let kleur = String(raw).trim().toUpperCase();
+
+    // simpele voorbeelden van opschonen:
+    // "BLAUW METALLIC" -> "BLAUW"
+    // "ROOD PERLMOER"  -> "ROOD"
+    const parts = kleur.split(' ');
+    if (parts.length > 1) {
+        kleur = parts[0]; // eerste woord pakken
+    }
+
+    return kleur;
+};
+
+/**
+ * Maakt een telling per kleur op basis van voertuigen.
+ * Output: [{ kleur: 'BLAUW', aantal: 123 }, ...]
+ */
+export const maakKleurStats = (vehicles) => {
+    // alleen voertuigen met een (eerste) kleur
+    const kleuren = vehicles
+        .map((auto) => normalizeColor(auto.eersteKleur))
+        .filter((kleur) => !!kleur);
+
+    // per kleur tellen
+    const tellingPerKleur = kleuren.reduce((acc, kleur) => {
+        if (!acc[kleur]) {
+            acc[kleur] = 0;
+        }
+        acc[kleur] += 1;
+        return acc;
+    }, {});
+
+    // omzetten naar array
+    const kleurArray = Object.keys(tellingPerKleur).map((kleurKey) => ({
+        kleur: kleurKey,
+        aantal: tellingPerKleur[kleurKey]
+    }));
+
+    // sorteren op aantal (hoog → laag)
+    kleurArray.sort((a, b) => b.aantal - a.aantal);
+
+    return kleurArray;
+};
