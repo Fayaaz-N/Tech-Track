@@ -2,7 +2,7 @@
 ## D3
 
 
-## Svelte
+## Svelte.
 
 
 ## De huisstijl
