@@ -1,6 +1,7 @@
 <script>
     import RdwFilterForm from '../components/RdwFilterForm.svelte';
     import BarChart from '../components/barchart.svelte';
+    import ColorChart from '../components/colorchart.svelte';
     import { maakJaarStats, maakKleurStats } from '$lib/fetchData.js';
 
     let activeView = 'sales';   // zelfde als VIEW_SALES
@@ -41,12 +42,8 @@
     {/if}
 
     {#if activeView === 'colors' && kleurStats.length > 0 && filters}
-        <!-- jouw kleuren weergave (nu bv. lijst, later eigen chart) -->
         <h2>Kleurverdeling voor {filters.merk}</h2>
-        <ul>
-            {#each kleurStats as rij}
-                <li>{rij.kleur} → {rij.aantal}</li>
-            {/each}
-        </ul>
+        <ColorChart data={kleurStats} />
     {/if}
+
 </main>

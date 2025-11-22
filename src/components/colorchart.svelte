@@ -1,34 +1,51 @@
 <script>
-    import { onMount } from 'svelte';
     import * as d3 from 'd3';
 
-    // verwacht: [{ kleur: 'GRIJS', aantal: 540 }, ...]
     export let data = [];
-
     let container;
 
-    onMount(() => {
-        draw();
-    });
+    const colorMap = {
+        WIT: '#f5f5f5',
+        ZWART: '#111111',
+        GRIJS: '#b0b0b0',
+        BLAUW: '#1565c0',
+        ROOD: '#e53935',
+        GROEN: '#43a047',
+        GEEL: '#fdd835',
+        ORANJE: '#fb8c00',
+        BRUIN: '#8d6e63',
+        PAARS: '#8e24aa'
+    };
 
-    // opnieuw tekenen als data verandert én er data is
-    $: if (container && data && data.length > 0) {
-        draw();
+    function nameToColor(name) {
+        const key = (name || '').trim().toUpperCase();
+        return colorMap[key] || '#cccccc';
     }
 
-    const draw = () => {
+    // ---- NIEUW: helpers voor contrastkleur ----
+    function hexToRgb(hex) {
+        const clean = hex.replace('#', '');
+        const bigint = parseInt(clean, 16);
+        return {
+            r: (bigint >> 16) & 255,
+            g: (bigint >> 8) & 255,
+            b: bigint & 255
+        };
+    }
+
+    function getContrastColor(hex) {
+        const { r, g, b } = hexToRgb(hex);
+        // relative luminance (simpel model)
+        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+        // boven ~0.6 = licht → zwarte tekst, anders witte tekst
+        return luminance > 0.6 ? '#000000' : '#ffffff';
+    }
+
+    function draw() {
         if (!container) return;
 
-        // even checken wat er binnenkomt
-        console.log('Treemap data:', data);
-
-        if (!data || data.length === 0) {
-            container.innerHTML = '';
-            return;
-        }
-
-        // container leegmaken
         container.innerHTML = '';
+        if (!data || data.length === 0) return;
 
         const width = 700;
         const height = 400;
@@ -37,12 +54,11 @@
         const innerWidth = width - margin.left - margin.right;
         const innerHeight = height - margin.top - margin.bottom;
 
-        // treemap werkt met een hiërarchie: root → children
         const rootData = {
             name: 'root',
             children: data.map((d) => ({
                 name: d.kleur,
-                value: d.aantal
+                value: +d.aantal || 0
             }))
         };
 
@@ -51,12 +67,9 @@
             .sum((d) => d.value)
             .sort((a, b) => b.value - a.value);
 
-        const treemapLayout = d3
-            .treemap()
+        d3.treemap()
             .size([innerWidth, innerHeight])
-            .paddingInner(2);
-
-        treemapLayout(root);
+            .paddingInner(2)(root);
 
         const svg = d3
             .select(container)
@@ -70,10 +83,6 @@
 
         const leaves = root.leaves();
 
-        // kleurenschaal op basis van naam
-        const colorScale = d3.scaleOrdinal(d3.schemeTableau10);
-
-        // tiles
         const tiles = g
             .selectAll('g.tile')
             .data(leaves)
@@ -86,28 +95,41 @@
             .append('rect')
             .attr('width', (d) => d.x1 - d.x0)
             .attr('height', (d) => d.y1 - d.y0)
-            .attr('fill', (d) => colorScale(d.data.name))
+            .attr('fill', (d) => nameToColor(d.data.name))
             .attr('stroke', '#fff')
             .attr('stroke-width', 1);
 
-        // text: kleurnaam + waarde, alleen tonen als er een beetje ruimte is
-        const minFontSize = 10;
+        const labelTiles = tiles.filter(
+            (d) => (d.x1 - d.x0) > 60 && (d.y1 - d.y0) > 30
+        );
 
-        tiles
+        labelTiles
             .append('text')
             .attr('x', 4)
             .attr('y', 16)
-            .attr('fill', 'white')
-            .attr('font-size', (d) => {
-                const w = d.x1 - d.x0;
-                const h = d.y1 - d.y0;
-                if (w < 50 || h < 20) {
-                    return 0; // te klein, geen tekst
-                }
-                return minFontSize;
+            .attr('font-size', 12)
+            .attr('font-weight', '600')
+            .attr('fill', (d) => {
+                const bg = nameToColor(d.data.name);
+                return getContrastColor(bg);
             })
-            .text((d) => `${d.data.name} (${d.data.value})`);
-    };
+            .text((d) => d.data.name);
+
+        labelTiles
+            .append('text')
+            .attr('x', 4)
+            .attr('y', 32)
+            .attr('font-size', 11)
+            .attr('fill', (d) => {
+                const bg = nameToColor(d.data.name);
+                return getContrastColor(bg);
+            })
+            .text((d) => d.data.value + ' Aantal auto`s');
+    }
+
+    $: if (container && data) {
+        draw();
+    }
 </script>
 
 <div bind:this={container}></div>
