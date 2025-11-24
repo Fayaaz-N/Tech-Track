@@ -1,11 +1,10 @@
 <script>
     import { createEventDispatcher } from 'svelte';
 
-    // losse views (mag je later invullen)
+    // losse views
     import HoogteView from './views/hoogte.svelte';
     import GewichtView from './views/gewicht.svelte';
     import KleurenView from './views/kleur.svelte';
-    import VermogenView from './views/vermogen.svelte';
     import PrijsView from './views/prijs.svelte';
     import VerkoopView from './views/verkoop.svelte';
 
@@ -36,7 +35,6 @@
         { key: 'hoogte', label: 'Hoogte' },
         { key: 'gewicht', label: 'Gewicht' },
         { key: 'kleuren', label: 'Kleuren' },
-        { key: 'vermogen', label: 'Vermogen' },
         { key: 'prijs', label: 'Catalogusprijs' },
         { key: 'verkoop', label: 'Verkoopaantallen' }
     ];
@@ -123,16 +121,6 @@
                     gekozenModel={gekozenModel}
                     kleurenOud={kleurenOud}
                     kleurenNieuw={kleurenNieuw}
-            />
-
-        {:else if actieveView === 'vermogen'}
-            <VermogenView
-                    voertuigenOud={voertuigenOud}
-                    voertuigenNieuw={voertuigenNieuw}
-                    jaarOud={jaarOud}
-                    jaarNieuw={jaarNieuw}
-                    gekozenMerk={gekozenMerk}
-                    gekozenModel={gekozenModel}
             />
 
         {:else if actieveView === 'prijs'}

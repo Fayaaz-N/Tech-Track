@@ -1,5 +1,5 @@
 <script>
-    // LET OP: car.svg moet in src/lib/assets/car.svg staan
+    // car.svg MOET in src/lib/assets/car.svg staan
     import carIcon from '$lib/assets/car.svg';
 
     export let jaarOud;
@@ -89,6 +89,9 @@
         {/each}
     </div>
 
+    <!-- DEBUG: laat zien welke URL SvelteKit van car.svg maakt -->
+    <pre class="debug-url">{carIcon}</pre>
+
     <p class="scale">
         1 icoon ≈ {schaal.toLocaleString('nl-NL')} auto's
     </p>
@@ -137,5 +140,13 @@
         text-align: center;
         font-size: 0.85rem;
         color: #555;
+    }
+
+    .debug-url {
+        margin-top: 0.5rem;
+        font-size: 10px;
+        color: #999;
+        text-align: center;
+        word-break: break-all;
     }
 </style>
