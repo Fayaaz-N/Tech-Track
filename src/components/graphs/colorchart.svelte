@@ -47,7 +47,7 @@
         container.innerHTML = '';
         if (!data || data.length === 0) return;
 
-        const width = 700;
+        const width = 300;
         const height = 400;
         const margin = { top: 10, right: 10, bottom: 10, left: 10 };
 

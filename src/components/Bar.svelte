@@ -1,8 +1,8 @@
 <script>
     import RdwFilterForm from './RdwFilterForm.svelte';
-    import BarChart from './barchart.svelte';
-    import ColorChart from './colorchart.svelte';
-    import { maakJaarStats, maakKleurStats } from '$lib/fetchData.js';
+    import BarChart from './graphs/barchart.svelte';
+    import ColorChart from './graphs/colorchart.svelte';
+    import { maakJaarStats, maakKleurStats } from '$lib/fetchData_old.js';
 
     const VIEW_SALES = 'sales';
     const VIEW_COLORS = 'colors';

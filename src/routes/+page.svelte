@@ -1,49 +1,148 @@
 <script>
-    import RdwFilterForm from '../components/RdwFilterForm.svelte';
-    import BarChart from '../components/barchart.svelte';
-    import ColorChart from '../components/colorchart.svelte';
-    import { maakJaarStats, maakKleurStats } from '$lib/fetchData.js';
+    import Intro from '../components/intro.svelte';
+    import Informatie from '../components/informatie.svelte';
+    import Dashboard from '../components/dashboard.svelte';
 
-    let activeView = 'sales';   // zelfde als VIEW_SALES
-    let filters = null;
-    let vehicles = [];
-    let jaarStats = [];
-    let kleurStats = [];
+    import { haalDataVoorMerkModelJarenInrichting } from '$lib/fetchData.js';
 
-    const handleViewChange = (event) => {
-        activeView = event.detail.view;
+    // simpele "enum" voor welke stap we tonen
+    const SCREEN = {
+        INTRO: 1,
+        INFO: 2,
+        DASHBOARD: 3
     };
 
-    const handleLoaded = (event) => {
-        activeView = event.detail.view;      // voor de zekerheid gelijk houden
-        filters = event.detail.filters;
-        vehicles = event.detail.vehicles;
+    let huidigScherm = SCREEN.INTRO;
 
-        if (activeView === 'sales') {
-            jaarStats = maakJaarStats(vehicles);
-            kleurStats = [];
-        } else if (activeView === 'colors') {
-            kleurStats = maakKleurStats(vehicles);
-            jaarStats = [];
+    // filters die uit Informatie-scherm komen
+    let gekozenMerk = null;
+    let gekozenModel = null;
+    let gekozenInrichting = 'ALLE';
+    let jaarOud = null;
+    let jaarNieuw = null;
+
+    // ruwe lijsten voor alle views
+    let voertuigenOud = [];
+    let voertuigenNieuw = [];
+
+    // alvast wat standaard info (kan Dashboard gebruiken)
+    let gemHoogteOud = null;
+    let gemHoogteNieuw = null;
+    let kleurenOud = [];
+    let kleurenNieuw = [];
+    let verkoopOud = null;
+    let verkoopNieuw = null;
+
+    // -----------------------------------------
+    // Navigatie helpers
+    // -----------------------------------------
+    const naarInfo = () => {
+        huidigScherm = SCREEN.INFO;
+    };
+
+    const resetState = () => {
+        huidigScherm = SCREEN.INTRO;
+        gekozenMerk = null;
+        gekozenModel = null;
+        gekozenInrichting = 'ALLE';
+        jaarOud = null;
+        jaarNieuw = null;
+        voertuigenOud = [];
+        voertuigenNieuw = [];
+        gemHoogteOud = null;
+        gemHoogteNieuw = null;
+        kleurenOud = [];
+        kleurenNieuw = [];
+        verkoopOud = null;
+        verkoopNieuw = null;
+    };
+
+    const terugNaarIntro = () => {
+        resetState();
+    };
+
+    const terugNaarInfo = () => {
+        huidigScherm = SCREEN.INFO;
+    };
+
+    // -----------------------------------------
+    // Binnenkomende filters van informatie.svelte
+    // -----------------------------------------
+    const filtersGekozen = async (event) => {
+        const detail = event.detail;
+
+        gekozenMerk = detail.merk;
+        gekozenModel = detail.model;
+        gekozenInrichting = detail.inrichting;
+        jaarOud = detail.jaarOud;
+        jaarNieuw = detail.jaarNieuw;
+
+        await laadData();
+
+        huidigScherm = SCREEN.DASHBOARD;
+    };
+
+    // -----------------------------------------
+    // Grote fetch naar RDW (met jouw nieuwe functie)
+    // -----------------------------------------
+    const laadData = async () => {
+        try {
+            const resultaat = await haalDataVoorMerkModelJarenInrichting(
+                gekozenMerk,
+                gekozenModel,
+                jaarOud,
+                jaarNieuw,
+                gekozenInrichting
+            );
+
+            voertuigenOud = resultaat.voertuigenOud;
+            voertuigenNieuw = resultaat.voertuigenNieuw;
+
+            gemHoogteOud = resultaat.gemHoogteOud;
+            gemHoogteNieuw = resultaat.gemHoogteNieuw;
+            kleurenOud = resultaat.kleurenOud;
+            kleurenNieuw = resultaat.kleurenNieuw;
+            verkoopOud = resultaat.verkoopOud;
+            verkoopNieuw = resultaat.verkoopNieuw;
+        } catch (err) {
+            console.error('Fout bij RDW data laden:', err);
+            voertuigenOud = [];
+            voertuigenNieuw = [];
         }
     };
 </script>
 
-<main>
-    <RdwFilterForm
-            on:viewchange={handleViewChange}
-            on:loaded={handleLoaded}
-    />
+<main class="app">
+    <section class="scherm-wrapper scherm-{huidigScherm}">
 
-    {#if activeView === 'sales' && jaarStats.length > 0 && filters}
-        <!-- jouw verkoop-grafiek -->
-        <h2>Verkoopaantallen per jaar voor {filters.merk}</h2>
-        <BarChart data={jaarStats} />
-    {/if}
+        {#if huidigScherm === SCREEN.INTRO}
+            <!-- Intro-scherm: legt uit wat de tool doet -->
+            <Intro on:start={naarInfo} />
 
-    {#if activeView === 'colors' && kleurStats.length > 0 && filters}
-        <h2>Kleurverdeling voor {filters.merk}</h2>
-        <ColorChart data={kleurStats} />
-    {/if}
+        {:else if huidigScherm === SCREEN.INFO}
+            <!-- Informatie/survey: merk, model, inrichting, jaren -->
+            <Informatie on:filters={filtersGekozen} />
 
+        {:else if huidigScherm === SCREEN.DASHBOARD}
+            <!-- Dashboard: hier komen alle views (hoogte, gewicht, etc.) -->
+            <Dashboard
+                    gekozenMerk={gekozenMerk}
+                    gekozenModel={gekozenModel}
+                    gekozenInrichting={gekozenInrichting}
+                    jaarOud={jaarOud}
+                    jaarNieuw={jaarNieuw}
+                    voertuigenOud={voertuigenOud}
+                    voertuigenNieuw={voertuigenNieuw}
+                    gemHoogteOud={gemHoogteOud}
+                    gemHoogteNieuw={gemHoogteNieuw}
+                    kleurenOud={kleurenOud}
+                    kleurenNieuw={kleurenNieuw}
+                    verkoopOud={verkoopOud}
+                    verkoopNieuw={verkoopNieuw}
+                    on:opnieuw={terugNaarIntro}
+                    on:terug={terugNaarInfo}
+            />
+        {/if}
+
+    </section>
 </main>
