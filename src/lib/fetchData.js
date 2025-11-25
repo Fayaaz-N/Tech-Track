@@ -66,6 +66,17 @@ const pakGetal = (raw) => {
 };
 
 // ----------------------------------------------
+// Catalogusprijs netjes parsen + sanity-filter
+// (tussen 1.000 en 300.000 euro)
+// ----------------------------------------------
+const bepaalCatalogusPrijs = (raw) => {
+    const n = Number(raw);
+    if (Number.isNaN(n)) return null;
+    if (n < 1000 || n > 300000) return null;
+    return n;
+};
+
+// ----------------------------------------------
 // Gemiddelde van een lijst (alleen echte nummers)
 // ----------------------------------------------
 const gemiddelde = (lijst) => {
@@ -336,6 +347,21 @@ export const haalDataVoorMerkEnJaren = async (merk, jaarOud, jaarNieuw, inrichti
 // Alles voor MERK + MODEL + 2 jaren + inrichting
 // → gebruikt jouw nieuwe flow (informatie → dashboard)
 // ===============================================================
+// ===============================================================
+// NIEUWE GROTE FETCH
+// Alles voor MERK + MODEL + 2 jaren + inrichting
+// → gebruikt jouw nieuwe flow (informatie → dashboard)
+// ===============================================================
+// ===============================================================
+// NIEUWE GROTE FETCH
+// Alles voor MERK + MODEL + 2 jaren + inrichting
+// → gebruikt jouw nieuwe flow (informatie → dashboard)
+// ===============================================================
+// ===============================================================
+// NIEUWE GROTE FETCH
+// Alles voor MERK + MODEL + 2 jaren + inrichting
+// → gebruikt jouw nieuwe flow (informatie → dashboard)
+// ===============================================================
 export const haalDataVoorMerkModelJarenInrichting = async (
     merk,
     model,
@@ -378,13 +404,157 @@ export const haalDataVoorMerkModelJarenInrichting = async (
     // inrichting achteraf filteren
     const gefilterd = filterOpInrichting(voertuigen, inrichting);
 
+    // ---------------------------------------------
+    // "oude" 2-punts data blijft werken
+    // ---------------------------------------------
     const voertuigenOud = gefilterd.filter((v) => v.jaar === Number(jaarOud));
     const voertuigenNieuw = gefilterd.filter((v) => v.jaar === Number(jaarNieuw));
 
     const hoogteOud = voertuigenOud.map((v) => v.hoogteMeter).filter((h) => h !== null);
     const hoogteNieuw = voertuigenNieuw.map((v) => v.hoogteMeter).filter((h) => h !== null);
 
+    // ---------------------------------------------
+    // NIEUW: per-jaar aggregaties voor ALLES
+    // ---------------------------------------------
+    const perJaarMap = new Map();
+
+    gefilterd.forEach((v) => {
+        const jaar = v.jaar;
+        if (jaar == null) return;
+
+        if (!perJaarMap.has(jaar)) {
+            perJaarMap.set(jaar, {
+                jaar,
+                aantal: 0,
+
+                // hoogte
+                hoogteSom: 0,
+                hoogteCount: 0,
+
+                // gewicht
+                massaSom: 0,
+                massaCount: 0,
+
+                // prijs
+                prijsSom: 0,
+                prijsCount: 0,
+                prijsMin: null,
+                prijsMax: null
+            });
+        }
+
+        const agg = perJaarMap.get(jaar);
+        agg.aantal += 1;
+
+        if (typeof v.hoogteMeter === 'number') {
+            agg.hoogteSom += v.hoogteMeter;
+            agg.hoogteCount += 1;
+        }
+
+        if (typeof v.massaKg === 'number') {
+            agg.massaSom += v.massaKg;
+            agg.massaCount += 1;
+        }
+
+        if (typeof v.catalogusPrijs === 'number') {
+            const p = v.catalogusPrijs;
+            agg.prijsSom += p;
+            agg.prijsCount += 1;
+
+            agg.prijsMin =
+                agg.prijsMin === null ? p : Math.min(agg.prijsMin, p);
+            agg.prijsMax =
+                agg.prijsMax === null ? p : Math.max(agg.prijsMax, p);
+        }
+    });
+
+
+    const hoogtePerJaar = [];
+    const gewichtPerJaar = [];
+    const prijsPerJaar = [];
+
+    Array.from(perJaarMap.values())
+        .sort((a, b) => a.jaar - b.jaar)
+        .forEach((agg) => {
+            hoogtePerJaar.push({
+                jaar: agg.jaar,
+                gemiddeldeHoogte:
+                    agg.hoogteCount > 0 ? agg.hoogteSom / agg.hoogteCount : null,
+                aantal: agg.aantal
+            });
+
+            gewichtPerJaar.push({
+                jaar: agg.jaar,
+                gemiddeldeGewicht:
+                    agg.massaCount > 0 ? agg.massaSom / agg.massaCount : null,
+                aantal: agg.aantal
+            });
+
+            prijsPerJaar.push({
+                jaar: agg.jaar,
+                gemiddeldePrijs:
+                    agg.prijsCount > 0 ? agg.prijsSom / agg.prijsCount : null,
+                minPrijs: agg.prijsMin,
+                maxPrijs: agg.prijsMax,
+                aantal: agg.prijsCount
+            });
+        });
+
+
+    Array.from(perJaarMap.values())
+        .sort((a, b) => a.jaar - b.jaar)
+        .forEach((agg) => {
+            hoogtePerJaar.push({
+                jaar: agg.jaar,
+                gemiddeldeHoogte:
+                    agg.hoogteCount > 0 ? agg.hoogteSom / agg.hoogteCount : null,
+                aantal: agg.aantal
+            });
+
+            gewichtPerJaar.push({
+                jaar: agg.jaar,
+                gemiddeldeGewicht:
+                    agg.massaCount > 0 ? agg.massaSom / agg.massaCount : null,
+                aantal: agg.aantal
+            });
+
+            prijsPerJaar.push({
+                jaar: agg.jaar,
+                gemiddeldePrijs:
+                    agg.prijsCount > 0 ? agg.prijsSom / agg.prijsCount : null,
+                aantal: agg.aantal
+            });
+        });
+
+    // ---------------------------------------------
+    // Kleuren per jaar
+    // ---------------------------------------------
+    const kleurenPerJaar = Array.from(perJaarMap.keys())
+        .sort((a, b) => a - b)
+        .map((jaar) => {
+            const voertuigenInJaar = gefilterd.filter((v) => v.jaar === jaar);
+            return {
+                jaar,
+                kleuren: telKleuren(voertuigenInJaar)
+            };
+        });
+
+    // ---------------------------------------------
+    // Verkoop per jaar (aantallen)
+    // ---------------------------------------------
+    const verkoopPerJaarMap = new Map();
+    gefilterd.forEach((v) => {
+        const jaar = v.jaar;
+        if (jaar == null) return;
+        verkoopPerJaarMap.set(jaar, (verkoopPerJaarMap.get(jaar) || 0) + 1);
+    });
+
+    const verkoopPerJaar = Array.from(verkoopPerJaarMap.entries())
+        .map(([jaar, aantal]) => ({ jaar, aantal }))
+        .sort((a, b) => a.jaar - b.jaar);
+
     return {
+        // 2-punts (voor backward compatibility)
         voertuigenOud,
         voertuigenNieuw,
         gemHoogteOud: gemiddelde(hoogteOud),
@@ -392,6 +562,13 @@ export const haalDataVoorMerkModelJarenInrichting = async (
         kleurenOud: telKleuren(voertuigenOud),
         kleurenNieuw: telKleuren(voertuigenNieuw),
         verkoopOud: voertuigenOud.length,
-        verkoopNieuw: voertuigenNieuw.length
+        verkoopNieuw: voertuigenNieuw.length,
+
+        // RANGE data voor ALLE views
+        hoogtePerJaar,
+        gewichtPerJaar,
+        prijsPerJaar,
+        kleurenPerJaar,
+        verkoopPerJaar
     };
 };

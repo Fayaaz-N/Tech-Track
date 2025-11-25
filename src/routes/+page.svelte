@@ -20,18 +20,26 @@
     let gekozenInrichting = 'ALLE';
     let jaarOud = null;
     let jaarNieuw = null;
+    let jarenReeks = [];          // range uit Informatie-component
 
-    // ruwe lijsten voor alle views
+    // ruwe lijsten voor alle views (2-punts)
     let voertuigenOud = [];
     let voertuigenNieuw = [];
 
-    // alvast wat standaard info (kan Dashboard gebruiken)
+    // standaard info (2-punts)
     let gemHoogteOud = null;
     let gemHoogteNieuw = null;
     let kleurenOud = [];
     let kleurenNieuw = [];
     let verkoopOud = null;
     let verkoopNieuw = null;
+
+    // NIEUW: per-jaar data voor ALLE views
+    let hoogtePerJaar = [];
+    let gewichtPerJaar = [];
+    let prijsPerJaar = [];
+    let kleurenPerJaar = [];
+    let verkoopPerJaar = [];
 
     // -----------------------------------------
     // Navigatie helpers
@@ -47,14 +55,23 @@
         gekozenInrichting = 'ALLE';
         jaarOud = null;
         jaarNieuw = null;
+        jarenReeks = [];
+
         voertuigenOud = [];
         voertuigenNieuw = [];
+
         gemHoogteOud = null;
         gemHoogteNieuw = null;
         kleurenOud = [];
         kleurenNieuw = [];
         verkoopOud = null;
         verkoopNieuw = null;
+
+        hoogtePerJaar = [];
+        gewichtPerJaar = [];
+        prijsPerJaar = [];
+        kleurenPerJaar = [];
+        verkoopPerJaar = [];
     };
 
     const terugNaarIntro = () => {
@@ -76,6 +93,7 @@
         gekozenInrichting = detail.inrichting;
         jaarOud = detail.jaarOud;
         jaarNieuw = detail.jaarNieuw;
+        jarenReeks = detail.jarenReeks || [];
 
         await laadData();
 
@@ -104,10 +122,22 @@
             kleurenNieuw = resultaat.kleurenNieuw;
             verkoopOud = resultaat.verkoopOud;
             verkoopNieuw = resultaat.verkoopNieuw;
+
+            // per-jaar data:
+            hoogtePerJaar = resultaat.hoogtePerJaar || [];
+            gewichtPerJaar = resultaat.gewichtPerJaar || [];
+            prijsPerJaar = resultaat.prijsPerJaar || [];
+            kleurenPerJaar = resultaat.kleurenPerJaar || [];
+            verkoopPerJaar = resultaat.verkoopPerJaar || [];
         } catch (err) {
             console.error('Fout bij RDW data laden:', err);
             voertuigenOud = [];
             voertuigenNieuw = [];
+            hoogtePerJaar = [];
+            gewichtPerJaar = [];
+            prijsPerJaar = [];
+            kleurenPerJaar = [];
+            verkoopPerJaar = [];
         }
     };
 </script>
@@ -131,6 +161,7 @@
                     gekozenInrichting={gekozenInrichting}
                     jaarOud={jaarOud}
                     jaarNieuw={jaarNieuw}
+                    jarenReeks={jarenReeks}
                     voertuigenOud={voertuigenOud}
                     voertuigenNieuw={voertuigenNieuw}
                     gemHoogteOud={gemHoogteOud}
@@ -139,6 +170,11 @@
                     kleurenNieuw={kleurenNieuw}
                     verkoopOud={verkoopOud}
                     verkoopNieuw={verkoopNieuw}
+                    hoogtePerJaar={hoogtePerJaar}
+                    gewichtPerJaar={gewichtPerJaar}
+                    prijsPerJaar={prijsPerJaar}
+                    kleurenPerJaar={kleurenPerJaar}
+                    verkoopPerJaar={verkoopPerJaar}
                     on:opnieuw={terugNaarIntro}
                     on:terug={terugNaarInfo}
             />

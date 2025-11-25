@@ -8,6 +8,10 @@
     export let gekozenMerk;
     export let gekozenModel;
 
+    // range-data uit fetchData
+    // [{ jaar, gemiddeldePrijs, minPrijs, maxPrijs, aantal }]
+    export let prijsPerJaar = [];
+
     function extractPrices(list) {
         const values = (list || [])
             .map((v) => v.catalogusPrijs ?? v.catalogusprijs ?? null)
@@ -26,8 +30,30 @@
         return { min, max, avg, count: values.length };
     }
 
+    const formatEuro = (n) =>
+        typeof n === 'number'
+            ? `€ ${Math.round(n).toLocaleString('nl-NL')}`
+            : '–';
+
     $: statsOud = extractPrices(voertuigenOud);
     $: statsNieuw = extractPrices(voertuigenNieuw);
+
+    $: heeftRangeData = (prijsPerJaar || []).some(
+        (d) =>
+            typeof d.gemiddeldePrijs === 'number' &&
+            !Number.isNaN(d.gemiddeldePrijs)
+    );
+
+    // lijst voor overzicht: alleen jaren met echte prijsdata
+    $: prijsLijst = (prijsPerJaar || [])
+        .filter(
+            (d) =>
+                typeof d.jaar === 'number' &&
+                d.aantal &&
+                typeof d.minPrijs === 'number' &&
+                typeof d.maxPrijs === 'number'
+        )
+        .sort((a, b) => a.jaar - b.jaar);
 </script>
 
 <section class="prijs-view">
@@ -38,47 +64,41 @@
             {#if gekozenModel} – {gekozenModel}{/if}
         </h3>
         <p>
-            Elke horizontale lijn toont het bereik van catalogusprijzen (van goedkoop tot duur)
-            in een jaar, met de gekleurde stip op de <strong>gemiddelde prijs</strong>.
+            Elke verticale balk toont het bereik van catalogusprijzen
+            (van goedkoop tot duur) in een jaar, met de stip op de
+            <strong>gemiddelde prijs</strong>. Je ziet alle jaren tussen
+            {jaarOud} en {jaarNieuw}.
         </p>
     </header>
 
-    <PrijsChart
-            {voertuigenOud}
-            {voertuigenNieuw}
-            {jaarOud}
-            {jaarNieuw}
-    />
+    {#if heeftRangeData}
+        <PrijsChart {prijsPerJaar} />
+    {:else}
+        <p>Geen catalogusprijs-data gevonden over deze periode.</p>
+    {/if}
 
-    <section class="prijs-insights">
-        <div class="kolom">
-            <h4>{jaarOud}</h4>
-            {#if statsOud.avg}
-                <p>Gemiddelde prijs: <strong>€ {Math.round(statsOud.avg).toLocaleString('nl-NL')}</strong></p>
-                <p>
-                    Goedkoopste: € {Math.round(statsOud.min).toLocaleString('nl-NL')}<br />
-                    Duurste: € {Math.round(statsOud.max).toLocaleString('nl-NL')}<br />
-                    Aantal voertuigen: {statsOud.count}
-                </p>
-            {:else}
-                <p>Geen prijsdata gevonden voor dit jaar.</p>
-            {/if}
-        </div>
-
-        <div class="kolom">
-            <h4>{jaarNieuw}</h4>
-            {#if statsNieuw.avg}
-                <p>Gemiddelde prijs: <strong>€ {Math.round(statsNieuw.avg).toLocaleString('nl-NL')}</strong></p>
-                <p>
-                    Goedkoopste: € {Math.round(statsNieuw.min).toLocaleString('nl-NL')}<br />
-                    Duurste: € {Math.round(statsNieuw.max).toLocaleString('nl-NL')}<br />
-                    Aantal voertuigen: {statsNieuw.count}
-                </p>
-            {:else}
-                <p>Geen prijsdata gevonden voor dit jaar.</p>
-            {/if}
-        </div>
-    </section>
+    <!-- NIEUW: overzicht voor alle jaren in de periode -->
+    {#if prijsLijst.length}
+        <section class="prijs-per-jaar">
+            <h4>Overzicht per jaar in de periode</h4>
+            <div class="prijs-per-jaar-grid">
+                {#each prijsLijst as jaarData}
+                    <article class="prijs-year-card">
+                        <h5>{jaarData.jaar}</h5>
+                        <p>
+                            Gemiddelde prijs:
+                            <strong>{formatEuro(jaarData.gemiddeldePrijs)}</strong>
+                        </p>
+                        <p>
+                            Goedkoopste: {formatEuro(jaarData.minPrijs)}<br />
+                            Duurste: {formatEuro(jaarData.maxPrijs)}<br />
+                            Aantal voertuigen: {jaarData.aantal}
+                        </p>
+                    </article>
+                {/each}
+            </div>
+        </section>
+    {/if}
 </section>
 
 <style>
@@ -101,5 +121,28 @@
 
     .prijs-insights .kolom {
         flex: 1 1 220px;
+    }
+
+    .prijs-per-jaar {
+        margin-top: 1.5rem;
+    }
+
+    .prijs-per-jaar-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 1rem;
+    }
+
+    .prijs-year-card {
+        flex: 1 1 200px;
+        min-width: 200px;
+        border: 1px solid #e3e3e3;
+        padding: 0.8rem 1rem;
+        border-radius: 4px;
+        box-sizing: border-box;
+    }
+
+    .prijs-year-card h5 {
+        margin-bottom: 0.4rem;
     }
 </style>

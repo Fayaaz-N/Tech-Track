@@ -1,8 +1,9 @@
 <script>
-    export let jaarOud;
-    export let jaarNieuw;
-    export let verkoopOud = 0;
-    export let verkoopNieuw = 0;
+    // verwacht:
+    // jarenReeks: [2000, 2001, ..., 2025]  (optioneel)
+    // verkoopPerJaar: [{ jaar: 2000, aantal: 1234 }, { jaar: 2001, aantal: 1500 }, ...]
+    export let jarenReeks = [];
+    export let verkoopPerJaar = [];
 
     // Optioneel: zelf instellen hoeveel auto's per icoon
     export let autosPerIcoon = null;
@@ -11,11 +12,24 @@
     const iconPath = '/car.svg';
 
     const MAX_ICONS_PER_YEAR = 60;
-    const ICONS_PER_ROW = 10;
 
     let groepen = [];
     let schaal = 1;
     let geenData = false;
+
+    // simpele kleurenreeks (loopt rond als er meer jaren zijn)
+    const kleurenPalette = [
+        '#1f77b4',
+        '#ff7f0e',
+        '#2ca02c',
+        '#d62728',
+        '#9467bd',
+        '#8c564b',
+        '#e377c2',
+        '#7f7f7f',
+        '#bcbd22',
+        '#17becf'
+    ];
 
     function berekenSchaal(maxCount) {
         if (autosPerIcoon && autosPerIcoon > 0) {
@@ -32,13 +46,22 @@
         return Math.round(raw / 1000) * 1000 || 1;
     }
 
+    // elke keer als verkoopPerJaar verandert: groepen opnieuw opbouwen
     $: {
-        const baseGroups = [
-            { jaar: jaarOud, count: verkoopOud, kleur: '#1f77b4' },
-            { jaar: jaarNieuw, count: verkoopNieuw, kleur: '#ff7f0e' }
-        ];
+        // schoon de input op: alleen entries met jaar én (niet-null) aantal
+        const baseGroups = (verkoopPerJaar || [])
+            .filter((item) => item && item.jaar != null)
+            .map((item, index) => ({
+                jaar: item.jaar,
+                count: Number(item.aantal || item.count || 0),
+                kleur: kleurenPalette[index % kleurenPalette.length]
+            }));
 
-        const maxCount = Math.max(...baseGroups.map((g) => g.count || 0)) || 0;
+        const maxCount =
+            baseGroups.length > 0
+                ? Math.max(...baseGroups.map((g) => g.count || 0))
+                : 0;
+
         geenData = maxCount === 0;
 
         if (geenData) {
@@ -52,7 +75,10 @@
                     return { ...g, iconCount: 0, icons: [] };
                 }
 
-                const iconCount = Math.max(1, Math.round(g.count / schaal));
+                const iconCount = Math.max(
+                    1,
+                    Math.round(g.count / schaal)
+                );
                 const icons = Array.from({ length: iconCount });
 
                 return {

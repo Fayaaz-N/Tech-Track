@@ -14,9 +14,13 @@
     export let gekozenMerk = null;
     export let gekozenModel = null;
     export let gekozenInrichting = 'ALLE';
+
+    // periode
     export let jaarOud = null;
     export let jaarNieuw = null;
+    export let jarenReeks = [];
 
+    // 2-punts data
     export let voertuigenOud = [];
     export let voertuigenNieuw = [];
 
@@ -26,6 +30,13 @@
     export let kleurenNieuw = [];
     export let verkoopOud = null;
     export let verkoopNieuw = null;
+
+    // RANGE data voor alle views
+    export let hoogtePerJaar = [];
+    export let gewichtPerJaar = [];
+    export let prijsPerJaar = [];
+    export let kleurenPerJaar = [];
+    export let verkoopPerJaar = [];
 
     // welke vergelijking staat nu “aan” in het dashboard
     let actieveView = 'hoogte';
@@ -66,7 +77,16 @@
         </h2>
 
         <p class="dashboard-sub">
-            Je bekijkt voertuigen uit {jaarOud} en {jaarNieuw}
+            Je bekijkt voertuigen uit
+            {#if jaarOud && jaarNieuw}
+                {jaarOud} t/m {jaarNieuw}
+            {:else if jaarOud}
+                vanaf {jaarOud}
+            {:else if jaarNieuw}
+                tot en met {jaarNieuw}
+            {:else}
+                een onbekende periode
+            {/if}
             {#if gekozenInrichting && gekozenInrichting !== 'ALLE'}
                 , inrichting: {gekozenInrichting}
             {/if}
@@ -99,6 +119,7 @@
                     gekozenModel={gekozenModel}
                     gemHoogteOud={gemHoogteOud}
                     gemHoogteNieuw={gemHoogteNieuw}
+                    hoogtePerJaar={hoogtePerJaar}
             />
 
         {:else if actieveView === 'gewicht'}
@@ -109,6 +130,7 @@
                     jaarNieuw={jaarNieuw}
                     gekozenMerk={gekozenMerk}
                     gekozenModel={gekozenModel}
+                    gewichtPerJaar={gewichtPerJaar}
             />
 
         {:else if actieveView === 'kleuren'}
@@ -121,6 +143,7 @@
                     gekozenModel={gekozenModel}
                     kleurenOud={kleurenOud}
                     kleurenNieuw={kleurenNieuw}
+                    kleurenPerJaar={kleurenPerJaar}
             />
 
         {:else if actieveView === 'prijs'}
@@ -131,18 +154,13 @@
                     jaarNieuw={jaarNieuw}
                     gekozenMerk={gekozenMerk}
                     gekozenModel={gekozenModel}
+                    prijsPerJaar={prijsPerJaar}
             />
 
         {:else if actieveView === 'verkoop'}
             <VerkoopView
-                    voertuigenOud={voertuigenOud}
-                    voertuigenNieuw={voertuigenNieuw}
-                    jaarOud={jaarOud}
-                    jaarNieuw={jaarNieuw}
-                    gekozenMerk={gekozenMerk}
-                    gekozenModel={gekozenModel}
-                    verkoopOud={verkoopOud}
-                    verkoopNieuw={verkoopNieuw}
+                    jarenReeks={jarenReeks}
+                    verkoopPerJaar={verkoopPerJaar}
             />
         {/if}
     </div>

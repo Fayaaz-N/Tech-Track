@@ -20,7 +20,7 @@
 
     <p>
         In deze mini-app kijk je hoe auto's groeien, veranderen en ontwikkelen.
-        Je kiest zelf een merk, een type auto (inrichting) en twee jaartallen.
+        Je kiest zelf een merk, een model en twee jaartallen.
         Daarna laten we je meerdere vergelijkingen zien:
     </p>
 
@@ -28,7 +28,6 @@
         <li>Hoogte vergelijking</li>
         <li>Gewicht vergelijking</li>
         <li>Kleuren van het wagenpark</li>
-        <li>Vermogen (kW)</li>
         <li>Catalogusprijzen</li>
         <li>Verkoopaantallen</li>
     </ul>

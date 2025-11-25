@@ -2,65 +2,82 @@
     import { onMount } from 'svelte';
     import * as d3 from 'd3';
 
-    export let voertuigenOud = [];
-    export let voertuigenNieuw = [];
-    export let jaarOud;
-    export let jaarNieuw;
+    // we krijgen direct per-jaar stats binnen:
+    // [{ jaar, gemiddeldePrijs, minPrijs, maxPrijs, aantal }]
+    export let prijsPerJaar = [];
 
     let container;
 
-    const WIDTH = 275;
-    const HEIGHT = 360;
+    const WIDTH = 425;
+    const HEIGHT = 560;
     const MARGIN = { top: 40, right: 30, bottom: 60, left: 90 };
 
-    // catalogusprijzen uitlezen + simpele sanity-filter
-    function extractPrices(list) {
-        const values = (list || [])
-            .map((v) => v.catalogusPrijs ?? v.catalogusprijs ?? null)
-            .filter((x) => typeof x === 'number' && !Number.isNaN(x))
-            // ruwe filter: tussen 1.000 en 300.000 euro
-            .filter((x) => x >= 1000 && x <= 300000);
+    // gekozen punt voor de legenda onder de chart
+    let activePoint = null;
 
-        if (!values.length) {
-            return { min: null, max: null, avg: null, count: 0 };
-        }
+    // zelfde sanity-filter als in de rest van je app:
+    // alleen prijzen tussen 1.000 en 300.000 euro
+    const clampPrice = (raw) => {
+        const n = Number(raw);
+        if (Number.isNaN(n)) return null;
+        if (n < 1000 || n > 300000) return null;
+        return n;
+    };
 
-        const min = d3.min(values);
-        const max = d3.max(values);
-        const sum = values.reduce((t, v) => t + v, 0);
-        const avg = sum / values.length;
-
-        return { min, max, avg, count: values.length };
-    }
+    const formatEuro = (n) =>
+        typeof n === 'number'
+            ? `€ ${Math.round(n).toLocaleString('nl-NL')}`
+            : '–';
 
     function draw() {
         if (!container) return;
         container.innerHTML = '';
 
-        const statsOud = extractPrices(voertuigenOud);
-        const statsNieuw = extractPrices(voertuigenNieuw);
+        const raw = Array.isArray(prijsPerJaar) ? prijsPerJaar : [];
 
-        if (!statsOud.avg && !statsNieuw.avg) {
+        // mappen naar vorm die de oude graph verwachtte,
+        // maar nu MET dezelfde prijsfilter (1k–300k)
+        const data = raw
+            .map((d, i) => {
+                const avg = clampPrice(d.gemiddeldePrijs ?? d.avg ?? null);
+                if (avg === null) return null;
+
+                let min = clampPrice(d.minPrijs ?? d.min ?? avg);
+                let max = clampPrice(d.maxPrijs ?? d.max ?? avg);
+
+                // als min/max wegvallen door filter → val terug op avg
+                if (min === null) min = avg;
+                if (max === null) max = avg;
+
+                // veiligheid: max altijd ≥ min
+                if (max < min) max = min;
+
+                return {
+                    jaar: d.jaar,
+                    min,
+                    max,
+                    avg,
+                    aantal: d.aantal ?? null,
+                    label: String(d.jaar),
+                    // kleuren afwisselen, eerste twee zoals je had
+                    color: i % 2 === 0 ? '#1f77b4' : '#ff7f0e'
+                };
+            })
+            .filter(Boolean);
+
+        if (!data.length) {
             const p = document.createElement('p');
-            p.textContent = 'Geen catalogusprijs-data beschikbaar voor deze selectie.';
+            p.textContent =
+                'Geen catalogusprijs-data beschikbaar voor deze selectie.';
             container.appendChild(p);
+            activePoint = null;
             return;
         }
 
-        const data = [
-            {
-                jaar: jaarOud,
-                ...statsOud,
-                label: String(jaarOud),
-                color: '#1f77b4'
-            },
-            {
-                jaar: jaarNieuw,
-                ...statsNieuw,
-                label: String(jaarNieuw),
-                color: '#ff7f0e'
-            }
-        ].filter((d) => d.avg); // alleen jaren met data
+        // standaard actief punt (eerste jaar) als er nog niets gekozen is
+        if (!activePoint) {
+            activePoint = data[0];
+        }
 
         const innerWidth = WIDTH - MARGIN.left - MARGIN.right;
         const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
@@ -149,29 +166,33 @@
             .attr('stroke-linecap', 'round')
             .attr('opacity', 0.35);
 
-        // gemiddelde-dot
+        // gemiddelde-dot (klikbaar)
         group
             .append('circle')
             .attr('cx', 0)
             .attr('cy', (d) => y(d.avg))
             .attr('r', 7)
             .attr('fill', (d) => d.color)
+            .style('cursor', 'pointer')
             .append('title')
             .text(
                 (d) =>
-                    `${d.jaar}: gemiddeld € ${Math.round(d.avg).toLocaleString('nl-NL')}\n` +
-                    `range: € ${Math.round(d.min).toLocaleString('nl-NL')} – € ${Math.round(
-                        d.max
-                    ).toLocaleString('nl-NL')}`
+                    `${d.jaar}: gemiddeld € ${Math.round(d.avg).toLocaleString(
+                        'nl-NL'
+                    )}\n` +
+                    `range: € ${Math.round(d.min).toLocaleString(
+                        'nl-NL'
+                    )} – € ${Math.round(d.max).toLocaleString('nl-NL')}`
             );
 
-        // label rechts naast de dot
+        // klik-handler om de legenda te updaten
         group
-            .append('text')
-            .attr('x', 10)
-            .attr('y', (d) => y(d.avg) + 4)
-            .attr('font-size', 11)
-            .text((d) => `€ ${Math.round(d.avg).toLocaleString('nl-NL')}`);
+            .selectAll('circle')
+            .on('click', (_event, d) => {
+                activePoint = d;
+            });
+
+        // LET OP: geen tekstlabels meer naast de dot → geen overlap
 
         // titel
         svg.append('text')
@@ -185,21 +206,61 @@
 
     onMount(draw);
 
-    $: if (container && voertuigenOud && voertuigenNieuw) {
+    // opnieuw tekenen als de data verandert
+    $: if (container && prijsPerJaar) {
         draw();
     }
 </script>
 
 <div bind:this={container} class="prijs-chart-container"></div>
 
+<!-- legenda / info-panel onder de grafiek -->
+<section class="prijs-legend">
+    {#if activePoint}
+        <h4>Jaar {activePoint.jaar}</h4>
+        <p>
+            Gemiddelde prijs:
+            <strong>{formatEuro(activePoint.avg)}</strong>
+        </p>
+        <p>
+            Bereik:
+            {formatEuro(activePoint.min)} – {formatEuro(activePoint.max)}<br />
+            Aantal voertuigen:
+            {activePoint.aantal ?? 'onbekend'}
+        </p>
+        <p class="hint">Klik op een andere stip om dat jaar te bekijken.</p>
+    {:else}
+        <p class="hint">
+            Klik op een stip in de grafiek voor details over dat jaar.
+        </p>
+    {/if}
+</section>
+
 <style>
     .prijs-chart-container {
         max-width: 100%;
-        overflow-x: auto;
+        margin-left: -20px;
+        overflow-x: visible;
     }
 
     svg {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+        sans-serif;
         font-size: 12px;
+    }
+
+    .prijs-legend {
+        margin-top: 0.8rem;
+        font-size: 0.9rem;
+    }
+
+    .prijs-legend h4 {
+        margin-bottom: 0.3rem;
+    }
+
+    .prijs-legend .hint {
+        margin-top: 0.3rem;
+        color: #666;
+        font-size: 0.85rem;
     }
 </style>
