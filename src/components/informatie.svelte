@@ -5,12 +5,12 @@
 
     const dispatch = createEventDispatcher();
 
-    // RDW helpers uit fetchData.js
+    // RDW helpers uit fetchData_old2.js
     import {
         haalMerken,
         haalModellenVoorMerk,
         haalJarenVoorMerkEnModel
-    } from '$lib/fetchData.js';
+    } from '$lib/fetchData_old2.js';
 
     // wat de gebruiker hier kiest
     let merk = '';

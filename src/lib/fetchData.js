@@ -1,14 +1,83 @@
 // src/lib/fetchData.js
-// ----------------------------------------------
-// Dit bestand regelt ALLE RDW data die we nodig hebben.
-// Ik hou 'm expres simpel: veel map/filter,
-// en overal comments waarom iets gebeurt.
-// ----------------------------------------------
+// ------------------------------------------------------
+// Nieuwe versie, gefocust op:
+// - BEV's (Battery Electric Vehicles)
+// - Chinese EV-merken vs Westerse EV-merken
+// - Verkoop (aantal geregistreerde voertuigen) per jaar
+//
+// Belangrijkste datasets:
+//
+// 1) m9d7-ebf2.json  → voertuigen op kenteken
+//    https://opendata.rdw.nl/resource/m9d7-ebf2.json
+//
+// 2) 8ys7-d773.json  → brandstof per kenteken
+//    https://opendata.rdw.nl/resource/8ys7-d773.json
+//
+// We koppelen die twee via `kenteken` en filteren daarna
+// op BEV's door te kijken welke kentekens alléén
+// brandstof "Elektriciteit" hebben.
+// ------------------------------------------------------
 
-// App token om meer data te mogen opvragen
+// App token om meer data te mogen opvragen (optioneel)
 const APP_TOKEN = import.meta.env?.VITE_RDW_APP_TOKEN || null;
 
-// Kleine helper om requests te doen met de token
+// Basis RDW endpoints
+const RDW_VEHICLES_URL = 'https://opendata.rdw.nl/resource/m9d7-ebf2.json';
+const RDW_FUEL_URL = 'https://opendata.rdw.nl/resource/8ys7-d773.json';
+
+// ------------------------------------------------------
+// Globale performance keuze:
+// we willen NIET langer dan nodig in het verleden zoeken.
+// Alles vóór 2020 negeren we gewoon in onze queries.
+// ------------------------------------------------------
+const MIN_JAAR_DEFAULT = 2020;
+
+// ------------------------------------------------------
+// Chinese EV-merken (ruwe lijst die je zelf mag tunen)
+// Let op: zo dicht mogelijk bij de RDW-merknaam houden
+// ------------------------------------------------------
+export const CHINESE_EV_MERKEN = [
+    'BYD',
+    'NIO',
+    'XPENG',
+    'AIWAYS',
+    'HONGQI',
+    'MAXUS',
+    'SERES',
+    'ORA',
+    'WEY',
+    'DFSK',
+    'LYNK & CO',   // Chinees (Geely) maar vaak "Europees" gepositioneerd
+    'MG'           // Merk is Brits, eigenaar Chinees (SAIC)
+];
+
+// ------------------------------------------------------
+// Westerse EV-merken (ook gewoon een handmatige lijst)
+// Ook deze kun je later zelf uitbreiden of tweaken.
+// ------------------------------------------------------
+export const WESTERSE_EV_MERKEN = [
+    'TESLA',
+    'VOLKSWAGEN',
+    'AUDI',
+    'BMW',
+    'MERCEDES-BENZ',
+    'VOLVO',
+    'POLESTAR',
+    'RENAULT',
+    'PEUGEOT',
+    'OPEL',
+    'CITROEN',
+    'FIAT',
+    'KIA',
+    'HYUNDAI',
+    'SKODA',
+    'FORD'
+];
+
+// ------------------------------------------------------
+// Kleine HTTP helper: 1 plek waar we de fetch doen.
+// Als RDW ooit iets verandert, fix je het hier.
+// ------------------------------------------------------
 const fetchRdwJson = async (url) => {
     const headers = APP_TOKEN ? { 'X-App-Token': APP_TOKEN } : {};
 
@@ -16,559 +85,325 @@ const fetchRdwJson = async (url) => {
 
     if (!res.ok) {
         const text = await res.text().catch(() => '');
-        throw new Error(`HTTP ${res.status}: ${text}`);
+        throw new Error(`RDW HTTP ${res.status}: ${text}`);
     }
 
     return res.json();
 };
 
-// Basis RDW endpoint
-const RDW_URL = 'https://opendata.rdw.nl/resource/m9d7-ebf2.json';
-
-// ----------------------------------------------
-// Helper om dingen netjes te maken:
-// "bmw" -> "Bmw", "MERCEDES-BENZ" -> "Mercedes-benz"
-// ----------------------------------------------
+// ------------------------------------------------------
+// "bmw" → "Bmw", "MERCEDES-BENZ" → "Mercedes-benz"
+// Handig als je merknaam netjes wilt tonen in de UI.
+// ------------------------------------------------------
 const capitalize = (str) =>
     str
         .toString()
         .toLowerCase()
         .replace(/(^\w|\s\w)/g, (m) => m.toUpperCase());
 
-// ----------------------------------------------
-// Datum van RDW is zoiets: 20070513
-// We pakken alleen de eerste 4 chars → 2007
-// ----------------------------------------------
+// ------------------------------------------------------
+// Datum uit RDW (bijv. "20231205") → jaar (2023)
+// ------------------------------------------------------
 const bepaalJaar = (rawDatum) => {
     if (!rawDatum) return null;
-
     const jaarStr = String(rawDatum).slice(0, 4);
     const jaar = Number(jaarStr);
-
     return Number.isNaN(jaar) ? null : jaar;
 };
 
-// ----------------------------------------------
-// Hoogte staat in cm → we willen meters
-// ----------------------------------------------
-const bepaalHoogteMeter = (v) => {
-    const raw = v.hoogte_voertuig ?? v.hoogte ?? null;
-    const n = Number(raw);
-    return Number.isNaN(n) ? null : n / 10;
-};
+// ------------------------------------------------------
+// Helper om een jaar-range WHERE te maken
+// jaarVan / jaarTot zijn gewone getallen, zoals 2015 / 2024
+// ------------------------------------------------------
+const maakJaarWhere = (jaarVan, jaarTot) => {
+    const min = Number.isFinite(jaarVan) ? jaarVan : null;
+    const max = Number.isFinite(jaarTot) ? jaarTot : null;
 
-// ----------------------------------------------
-// Gewoon getallen netjes parsen
-// ----------------------------------------------
-const pakGetal = (raw) => {
-    const n = Number(raw);
-    return Number.isNaN(n) ? null : n;
-};
+    const parts = [];
 
-// ----------------------------------------------
-// Catalogusprijs netjes parsen + sanity-filter
-// (tussen 1.000 en 300.000 euro)
-// ----------------------------------------------
-const bepaalCatalogusPrijs = (raw) => {
-    const n = Number(raw);
-    if (Number.isNaN(n)) return null;
-    if (n < 1000 || n > 300000) return null;
-    return n;
-};
-
-// ----------------------------------------------
-// Gemiddelde van een lijst (alleen echte nummers)
-// ----------------------------------------------
-const gemiddelde = (lijst) => {
-    const values = lijst.filter((v) => typeof v === 'number');
-    if (values.length === 0) return null;
-    const som = values.reduce((t, v) => t + v, 0);
-    return som / values.length;
-};
-
-// ----------------------------------------------
-// Kleuren tellen (hier komt later jouw treemap)
-// ----------------------------------------------
-const telKleuren = (voertuigen) => {
-    const kleurMap = new Map();
-
-    voertuigen.forEach((v) => {
-        const kleur = (v.eerste_kleur || 'ONBEKEND').trim().toUpperCase();
-
-        kleurMap.set(kleur, (kleurMap.get(kleur) || 0) + 1);
-    });
-
-    return Array.from(kleurMap.entries())
-        .map(([kleur, aantal]) => ({ kleur, aantal }))
-        .sort((a, b) => b.aantal - a.aantal);
-};
-
-// ----------------------------------------------
-// Inrichting filter doen we achteraf (want RDW
-// geeft super rare lange teksten dus exact match
-// in query werkt niet altijd fijn)
-// ----------------------------------------------
-const filterOpInrichting = (voertuigen, inrichting) => {
-    if (!inrichting || inrichting === 'ALLE') return voertuigen;
-
-    const needle = inrichting.trim().toUpperCase();
-
-    return voertuigen.filter((v) => {
-        const raw = (v.inrichting || '').trim().toUpperCase();
-        return raw === needle;
-    });
-};
-
-// ===============================================================
-// MERKEN OPHALEN — alleen personenauto’s, en alles netjes maken
-// ===============================================================
-export const haalMerken = async () => {
-    const params = new URLSearchParams({
-        $select: 'merk, voertuigsoort',
-        $where: "voertuigsoort = 'Personenauto'",
-        $limit: '10000000'
-    });
-
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
-
-    // alle merken verzamelen en opschonen
-    const alle = data
-        .map((item) => item.merk)
-        .filter((m) => typeof m === 'string')
-        .map((m) => m.trim())
-        .filter((m) => m.length > 0)
-        .map(capitalize); // hier maken we de letters mooi
-
-    // duplicates eruit
-    const uniek = alle.reduce((lijst, merk) => {
-        return lijst.includes(merk) ? lijst : [...lijst, merk];
-    }, []);
-
-    return uniek.sort();
-};
-
-// ===============================================================
-// MODELLEN (handelsbenamingen) per merk
-// (wordt ook gebruikt voor inrichting = 'ALLE')
-// ===============================================================
-export const haalModellenVoorMerk = async (merk) => {
-    const merkClean = merk.toString().trim().toUpperCase().replace(/'/g, "''");
-
-    const params = new URLSearchParams({
-        $select: 'handelsbenaming, merk, voertuigsoort',
-        $where: `voertuigsoort = 'Personenauto' AND merk = '${merkClean}'`,
-        $limit: '10000000'
-    });
-
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
-
-    const alle = data
-        .map((item) => item.handelsbenaming)
-        .filter((m) => typeof m === 'string')
-        .map((m) => m.trim())
-        .filter((m) => m.length > 0)
-        .map(capitalize);
-
-    const uniek = alle.reduce((lijst, item) => {
-        return lijst.includes(item) ? lijst : [...lijst, item];
-    }, []);
-
-    return uniek.sort();
-};
-
-// ===============================================================
-// MODELLEN per MERK + INRICHTING
-// - Als inrichting = 'ALLE' → alle modellen voor merk
-// - Anders: we halen alles voor merk op en filteren
-//   achteraf op inrichting (zodat rare teksten geen
-//   probleem zijn in de RDW-query zelf)
-// ===============================================================
-export const haalModellenVoorMerkEnInrichting = async (merk, inrichting) => {
-    // geen inrichting of ALLE → gewoon alle modellen van dit merk
-    if (!inrichting || inrichting === 'ALLE') {
-        return haalModellenVoorMerk(merk);
+    if (min != null) {
+        parts.push(`datum_eerste_toelating >= ${min}0101`);
+    }
+    if (max != null) {
+        parts.push(`datum_eerste_toelating <= ${max}1231`);
     }
 
-    const merkClean = merk.toString().trim().toUpperCase().replace(/'/g, "''");
-
-    const params = new URLSearchParams({
-        $select: 'handelsbenaming, merk, voertuigsoort, inrichting',
-        $where: `voertuigsoort = 'Personenauto' AND merk = '${merkClean}'`,
-        $limit: '10000000'
-    });
-
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
-
-    // eerst op inrichting filteren met onze helper
-    const gefilterd = filterOpInrichting(data, inrichting);
-
-    const alle = gefilterd
-        .map((item) => item.handelsbenaming)
-        .filter((m) => typeof m === 'string')
-        .map((m) => m.trim())
-        .filter((m) => m.length > 0)
-        .map(capitalize);
-
-    const uniek = alle.reduce((lijst, item) => {
-        return lijst.includes(item) ? lijst : [...lijst, item];
-    }, []);
-
-    return uniek.sort();
+    return parts.join(' AND ');
 };
 
-// ===============================================================
-// JAREN per MERK + MODEL
-// ===============================================================
-export const haalJarenVoorMerkEnModel = async (merk, model) => {
-    const merkClean = merk.toString().trim().toUpperCase().replace(/'/g, "''");
-    const modelClean = model.toString().trim().toUpperCase().replace(/'/g, "''");
+// ------------------------------------------------------
+// RDW houdt merknamen in hoofdletters bij.
+// We zorgen dat wat jij invult netjes wordt opgeschoond,
+// en dat quotes in namen geen SQL-bug veroorzaken.
+// ------------------------------------------------------
+const maakMerkWhere = (merkRaw) => {
+    const merkClean = merkRaw
+        .toString()
+        .trim()
+        .toUpperCase()
+        .replace(/'/g, "''");
 
-    const params = new URLSearchParams({
-        $select: 'datum_eerste_toelating, merk, handelsbenaming, voertuigsoort',
-        $where:
-            "voertuigsoort = 'Personenauto'" +
-            ` AND merk = '${merkClean}'` +
-            ` AND handelsbenaming = '${modelClean}'`,
-        $limit: '10000000'
-    });
-
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
-
-    const jaren = data
-        .map((item) => bepaalJaar(item.datum_eerste_toelating))
-        .filter((jaar) => typeof jaar === 'number' && !Number.isNaN(jaar));
-
-    const uniek = jaren.reduce((lijst, jaar) => {
-        return lijst.includes(jaar) ? lijst : [...lijst, jaar];
-    }, []);
-
-    return uniek.sort((a, b) => a - b);
+    return `merk = '${merkClean}'`;
 };
 
-// ===============================================================
-// INRICHTINGEN OPHALEN PER MERK — ook opgeschoond
-// ===============================================================
-export const haalInrichtingenVoorMerk = async (merk) => {
-    const merkClean = merk.toString().trim().toUpperCase().replace(/'/g, "''");
+// ------------------------------------------------------
+//  BRANDSTOF: BEV bepalen
+//  ---------------------
+//  In 8ys7-d773 heeft elk kenteken 1..n brandstofregels.
+//  We vinden BEV's door te kijken naar het totaalpakket
+//  per kenteken:
+//
+//  - We verzamelen alle brandstof_omschrijving waarden
+//    per kenteken
+//  - Als dat setje exact ["ELEKTRICITEIT"] is
+//    → dan zien we 'm als BEV.
+//  - Kentekens zonder brandstof-info of met combinatie
+//    (Benzine + Elektriciteit) tellen we niet als BEV.
+// ------------------------------------------------------
+const MAX_KENTEKENS_PER_BRANDSTOF_QUERY = 50;
 
-    const params = new URLSearchParams({
-        $select: 'inrichting, merk, voertuigsoort',
-        $where: `voertuigsoort = 'Personenauto' AND merk = '${merkClean}'`,
-        $limit: '10000000'
-    });
-
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
-
-    const alle = data
-        .map((item) => item.inrichting)
-        .filter((i) => typeof i === 'string')
-        .map((i) => i.trim())
-        .filter((i) => i.length > 0)
-        .map(capitalize);
-
-    const uniek = alle.reduce((lijst, item) => {
-        return lijst.includes(item) ? lijst : [...lijst, item];
-    }, []);
-
-    return uniek.sort();
+// split een array in kleine chunks zodat onze IN(...) query niet te groot wordt
+const chunk = (arr, size) => {
+    const result = [];
+    for (let i = 0; i < arr.length; i += size) {
+        result.push(arr.slice(i, i + size));
+    }
+    return result;
 };
 
-// ===============================================================
-// OUDE VERSIE: alles voor MERK + 2 jaren + inrichting
-// (voor oude schermen; nieuwe flow gebruikt de functie eronder)
-// ===============================================================
-export const haalDataVoorMerkEnJaren = async (merk, jaarOud, jaarNieuw, inrichting) => {
-    const jaarMin = Math.min(jaarOud, jaarNieuw);
-    const jaarMax = Math.max(jaarOud, jaarNieuw);
+// bepaalt voor een lijst kentekens welke echt BEV zijn
+const bepaalBevKentekens = async (kentekens) => {
+    const bevSet = new Set();
+    const brandstoffenPerKenteken = new Map();
 
-    const merkClean = merk.toString().trim().toUpperCase().replace(/'/g, "''");
+    const uniekeKentekens = Array.from(new Set(kentekens.filter(Boolean)));
+    if (uniekeKentekens.length === 0) return bevSet;
 
-    const where = [
-        `merk = '${merkClean}'`,
-        `voertuigsoort = 'Personenauto'`,
-        `datum_eerste_toelating >= ${jaarMin}0101`,
-        `datum_eerste_toelating <= ${jaarMax}1231`
-    ].join(' AND ');
+    const batches = chunk(uniekeKentekens, MAX_KENTEKENS_PER_BRANDSTOF_QUERY);
 
-    const params = new URLSearchParams({
-        $where: where,
-        $limit: '10000000'
+    for (const batch of batches) {
+        // kentekens netjes in 'A','B','C' vorm
+        const inList = batch
+            .map((k) => `'${k.replace(/'/g, "''")}'`)
+            .join(',');
+
+        const params = new URLSearchParams({
+            $select: 'kenteken, brandstof_omschrijving',
+            $where: `kenteken IN (${inList})`,
+            $limit: '50000' // we vragen alleen deze subset van kentekens op
+        });
+
+        const rows = await fetchRdwJson(`${RDW_FUEL_URL}?${params}`);
+
+        rows.forEach((r) => {
+            const k = r.kenteken;
+            if (!k) return;
+
+            const arr = brandstoffenPerKenteken.get(k) || [];
+            if (r.brandstof_omschrijving) {
+                arr.push(r.brandstof_omschrijving.trim());
+            }
+            brandstoffenPerKenteken.set(k, arr);
+        });
+    }
+
+    // nu per kenteken checken of de set precies ["ELEKTRICITEIT"] is
+    brandstoffenPerKenteken.forEach((list, kenteken) => {
+        const unique = Array.from(
+            new Set(list.map((x) => x.toUpperCase()))
+        );
+
+        // pure BEV → alleen Elektriciteit
+        if (unique.length === 1 && unique[0] === 'ELEKTRICITEIT') {
+            bevSet.add(kenteken);
+        }
     });
 
-    // data ophalen
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
+    return bevSet;
+};
 
-    // basis-opschoning van elk voertuig
-    const voertuigen = data
+// ------------------------------------------------------
+// VOERTUIGEN per MERK + JAAR-RANGE ophalen
+// (nog zonder te filteren op BEV / brandstof)
+//
+// LET OP: hier klemmen we ook nog even tegen MIN_JAAR_DEFAULT,
+// voor het geval iemand deze helper los gebruikt.
+// ------------------------------------------------------
+const haalVoertuigenVoorMerkEnJaren = async (merk, jaarVan, jaarTot) => {
+    // extra veiligheid: nooit vóór 2020 query'en, ook als iemand
+    // hier direct een ouder jaar in stopt
+    const normVan = Math.max(MIN_JAAR_DEFAULT, Number(jaarVan));
+    const normTot = Number(jaarTot);
+
+    const whereParts = [
+        "voertuigsoort = 'Personenauto'",
+        maakMerkWhere(merk)
+    ];
+
+    const jaarWhere = maakJaarWhere(normVan, normTot);
+    if (jaarWhere) {
+        whereParts.push(jaarWhere);
+    }
+
+    const params = new URLSearchParams({
+        $select: 'kenteken, merk, datum_eerste_toelating',
+        $where: whereParts.join(' AND '),
+        $limit: '50000' // veiligheidslimiet; dit kun je later tunen
+    });
+
+    const data = await fetchRdwJson(`${RDW_VEHICLES_URL}?${params}`);
+
+    // we voegen alvast het jaar toe, dan kunnen we later makkelijk aggregeren
+    return (data || [])
         .map((v) => ({
-            ...v,
-
-            // jaar (via helper)
-            jaar: bepaalJaar(v.datum_eerste_toelating),
-
-            // hoogte in meters
-            hoogteMeter: bepaalHoogteMeter(v),
-
-            // wat de views fijn vinden:
-            massaKg: pakGetal(v.massa_ledig_voertuig),
-            vermogenKw: pakGetal(v.netto_maximumvermogen),
-            catalogusPrijs: pakGetal(v.catalogusprijs)
+            kenteken: v.kenteken,
+            merk: v.merk,
+            jaar: bepaalJaar(v.datum_eerste_toelating)
         }))
-        .filter((v) => v.jaar !== null);
-
-    // inrichting-filter (achteraf)
-    const gefilterd = filterOpInrichting(voertuigen, inrichting);
-
-    // splitsen op jaar
-    const voertuigenOud = gefilterd.filter((v) => v.jaar === Number(jaarOud));
-    const voertuigenNieuw = gefilterd.filter((v) => v.jaar === Number(jaarNieuw));
-
-    // alvast een paar standaard dingen (voor jouw oude schermen)
-    const hoogteOud = voertuigenOud.map((v) => v.hoogteMeter).filter((x) => x !== null);
-    const hoogteNieuw = voertuigenNieuw.map((v) => v.hoogteMeter).filter((x) => x !== null);
-
-    return {
-        // de twee ruwe lijsten
-        voertuigenOud,
-        voertuigenNieuw,
-
-        // alvast wat basisinfo
-        gemHoogteOud: gemiddelde(hoogteOud),
-        gemHoogteNieuw: gemiddelde(hoogteNieuw),
-        kleurenOud: telKleuren(voertuigenOud),
-        kleurenNieuw: telKleuren(voertuigenNieuw),
-        verkoopOud: voertuigenOud.length,
-        verkoopNieuw: voertuigenNieuw.length
-    };
+        .filter((v) => v.kenteken && v.jaar != null);
 };
 
-// ===============================================================
-// NIEUWE GROTE FETCH
-// Alles voor MERK + MODEL + 2 jaren + inrichting
-// → gebruikt jouw nieuwe flow (informatie → dashboard)
-// ===============================================================
-// ===============================================================
-// NIEUWE GROTE FETCH
-// Alles voor MERK + MODEL + 2 jaren + inrichting
-// → gebruikt jouw nieuwe flow (informatie → dashboard)
-// ===============================================================
-// ===============================================================
-// NIEUWE GROTE FETCH
-// Alles voor MERK + MODEL + 2 jaren + inrichting
-// → gebruikt jouw nieuwe flow (informatie → dashboard)
-// ===============================================================
-// ===============================================================
-// NIEUWE GROTE FETCH
-// Alles voor MERK + MODEL + 2 jaren + inrichting
-// → gebruikt jouw nieuwe flow (informatie → dashboard)
-// ===============================================================
-export const haalDataVoorMerkModelJarenInrichting = async (
+// ------------------------------------------------------
+// PUBLIEKE API #1
+// haalBevVerkoopPerJaarVoorMerk(merk, jaarVan, jaarTot)
+//
+// - Haalt alle voertuigen voor dat merk in de jaar-range op
+// - Checkt via brandstof-tabel welke kentekens BEV zijn
+// - Telt per jaar hoeveel BEV's er zijn
+//
+// Dit is precies wat je nodig hebt om links (China) en
+// rechts (Westers) te vergelijken op je dashboard.
+// ------------------------------------------------------
+export const haalBevVerkoopPerJaarVoorMerk = async (
     merk,
-    model,
-    jaarOud,
-    jaarNieuw,
-    inrichting
+    jaarVan,
+    jaarTot
 ) => {
-    const jaarMin = Math.min(jaarOud, jaarNieuw);
-    const jaarMax = Math.max(jaarOud, jaarNieuw);
+    // 0) basis-normalisatie van de ingevoerde jaren
+    const v = Number(jaarVan);
+    const t = Number(jaarTot);
 
-    const merkClean = merk.toString().trim().toUpperCase().replace(/'/g, "''");
-    const modelClean = model.toString().trim().toUpperCase().replace(/'/g, "''");
+    let jaarMin = Math.min(v, t);
+    let jaarMax = Math.max(v, t);
 
-    const where = [
-        `voertuigsoort = 'Personenauto'`,
-        `merk = '${merkClean}'`,
-        `handelsbenaming = '${modelClean}'`,
-        `datum_eerste_toelating >= ${jaarMin}0101`,
-        `datum_eerste_toelating <= ${jaarMax}1231`
-    ].join(' AND ');
+    // 0b) performance-keuze:
+    // we willen ALTIJD minimaal vanaf 2020 werken,
+    // ook als de gebruiker per ongeluk een ouder jaar kiest.
+    if (!Number.isFinite(jaarMin) || !Number.isFinite(jaarMax)) {
+        // als er iets geks binnenkomt, doe een simpele fallback
+        jaarMin = MIN_JAAR_DEFAULT;
+        jaarMax = new Date().getFullYear();
+    }
 
-    const params = new URLSearchParams({
-        $where: where,
-        $limit: '10000000'
-    });
+    jaarMin = Math.max(MIN_JAAR_DEFAULT, jaarMin);
 
-    const data = await fetchRdwJson(`${RDW_URL}?${params}`);
+    // 1) voertuigen voor dit merk + periode ophalen
+    const voertuigen = await haalVoertuigenVoorMerkEnJaren(
+        merk,
+        jaarMin,
+        jaarMax
+    );
 
-    const voertuigen = data
-        .map((v) => ({
-            ...v,
-            jaar: bepaalJaar(v.datum_eerste_toelating),
-            hoogteMeter: bepaalHoogteMeter(v),
-            massaKg: pakGetal(v.massa_ledig_voertuig),
-            vermogenKw: pakGetal(v.netto_maximumvermogen),
-            catalogusPrijs: pakGetal(v.catalogusprijs)
-        }))
-        .filter((v) => v.jaar !== null);
+    if (!voertuigen.length) {
+        // zelfs als er geen voertuigen zijn, geven we de range terug
+        // met overal 0 → dan lopen jouw grafieken straks mooi door
+        const verkoopPerJaarLeeg = [];
+        for (let jaar = jaarMin; jaar <= jaarMax; jaar++) {
+            verkoopPerJaarLeeg.push({ jaar, aantal: 0 });
+        }
 
-    // inrichting achteraf filteren
-    const gefilterd = filterOpInrichting(voertuigen, inrichting);
+        return {
+            merkRuw: merk,
+            merkNetjes: capitalize(merk),
+            jaarVan: jaarMin,
+            jaarTot: jaarMax,
+            totaalEVs: 0,
+            verkoopPerJaar: verkoopPerJaarLeeg,
+            bevKentekens: []
+        };
+    }
 
-    // ---------------------------------------------
-    // "oude" 2-punts data blijft werken
-    // ---------------------------------------------
-    const voertuigenOud = gefilterd.filter((v) => v.jaar === Number(jaarOud));
-    const voertuigenNieuw = gefilterd.filter((v) => v.jaar === Number(jaarNieuw));
+    const alleKentekens = voertuigen.map((v) => v.kenteken);
 
-    const hoogteOud = voertuigenOud.map((v) => v.hoogteMeter).filter((h) => h !== null);
-    const hoogteNieuw = voertuigenNieuw.map((v) => v.hoogteMeter).filter((h) => h !== null);
+    // 2) checken welke kentekens BEV zijn (pure "Elektriciteit")
+    const bevSet = await bepaalBevKentekens(alleKentekens);
 
-    // ---------------------------------------------
-    // NIEUW: per-jaar aggregaties voor ALLES
-    // ---------------------------------------------
+    // 3) filter voertuigen naar alleen BEV's
+    const bevVoertuigen = voertuigen.filter((v) =>
+        bevSet.has(v.kenteken)
+    );
+
+    // 4) aggregeren per jaar (alleen jaren waar echt iets is)
     const perJaarMap = new Map();
 
-    gefilterd.forEach((v) => {
+    bevVoertuigen.forEach((v) => {
         const jaar = v.jaar;
-        if (jaar == null) return;
-
         if (!perJaarMap.has(jaar)) {
-            perJaarMap.set(jaar, {
-                jaar,
-                aantal: 0,
-
-                // hoogte
-                hoogteSom: 0,
-                hoogteCount: 0,
-
-                // gewicht
-                massaSom: 0,
-                massaCount: 0,
-
-                // prijs
-                prijsSom: 0,
-                prijsCount: 0,
-                prijsMin: null,
-                prijsMax: null
-            });
+            perJaarMap.set(jaar, 0);
         }
-
-        const agg = perJaarMap.get(jaar);
-        agg.aantal += 1;
-
-        if (typeof v.hoogteMeter === 'number') {
-            agg.hoogteSom += v.hoogteMeter;
-            agg.hoogteCount += 1;
-        }
-
-        if (typeof v.massaKg === 'number') {
-            agg.massaSom += v.massaKg;
-            agg.massaCount += 1;
-        }
-
-        if (typeof v.catalogusPrijs === 'number') {
-            const p = v.catalogusPrijs;
-            agg.prijsSom += p;
-            agg.prijsCount += 1;
-
-            agg.prijsMin =
-                agg.prijsMin === null ? p : Math.min(agg.prijsMin, p);
-            agg.prijsMax =
-                agg.prijsMax === null ? p : Math.max(agg.prijsMax, p);
-        }
+        perJaarMap.set(jaar, perJaarMap.get(jaar) + 1);
     });
 
-
-    const hoogtePerJaar = [];
-    const gewichtPerJaar = [];
-    const prijsPerJaar = [];
-
-    Array.from(perJaarMap.values())
-        .sort((a, b) => a.jaar - b.jaar)
-        .forEach((agg) => {
-            hoogtePerJaar.push({
-                jaar: agg.jaar,
-                gemiddeldeHoogte:
-                    agg.hoogteCount > 0 ? agg.hoogteSom / agg.hoogteCount : null,
-                aantal: agg.aantal
-            });
-
-            gewichtPerJaar.push({
-                jaar: agg.jaar,
-                gemiddeldeGewicht:
-                    agg.massaCount > 0 ? agg.massaSom / agg.massaCount : null,
-                aantal: agg.aantal
-            });
-
-            prijsPerJaar.push({
-                jaar: agg.jaar,
-                gemiddeldePrijs:
-                    agg.prijsCount > 0 ? agg.prijsSom / agg.prijsCount : null,
-                minPrijs: agg.prijsMin,
-                maxPrijs: agg.prijsMax,
-                aantal: agg.prijsCount
-            });
+    // 5) nu bouwen we een VOLLEDIGE reeks van jaarMin → jaarMax
+    //    als er geen entry is in perJaarMap → aantal = 0
+    const verkoopPerJaar = [];
+    for (let jaar = jaarMin; jaar <= jaarMax; jaar++) {
+        verkoopPerJaar.push({
+            jaar,
+            aantal: perJaarMap.get(jaar) || 0
         });
-
-
-    Array.from(perJaarMap.values())
-        .sort((a, b) => a.jaar - b.jaar)
-        .forEach((agg) => {
-            hoogtePerJaar.push({
-                jaar: agg.jaar,
-                gemiddeldeHoogte:
-                    agg.hoogteCount > 0 ? agg.hoogteSom / agg.hoogteCount : null,
-                aantal: agg.aantal
-            });
-
-            gewichtPerJaar.push({
-                jaar: agg.jaar,
-                gemiddeldeGewicht:
-                    agg.massaCount > 0 ? agg.massaSom / agg.massaCount : null,
-                aantal: agg.aantal
-            });
-
-            prijsPerJaar.push({
-                jaar: agg.jaar,
-                gemiddeldePrijs:
-                    agg.prijsCount > 0 ? agg.prijsSom / agg.prijsCount : null,
-                aantal: agg.aantal
-            });
-        });
-
-    // ---------------------------------------------
-    // Kleuren per jaar
-    // ---------------------------------------------
-    const kleurenPerJaar = Array.from(perJaarMap.keys())
-        .sort((a, b) => a - b)
-        .map((jaar) => {
-            const voertuigenInJaar = gefilterd.filter((v) => v.jaar === jaar);
-            return {
-                jaar,
-                kleuren: telKleuren(voertuigenInJaar)
-            };
-        });
-
-    // ---------------------------------------------
-    // Verkoop per jaar (aantallen)
-    // ---------------------------------------------
-    const verkoopPerJaarMap = new Map();
-    gefilterd.forEach((v) => {
-        const jaar = v.jaar;
-        if (jaar == null) return;
-        verkoopPerJaarMap.set(jaar, (verkoopPerJaarMap.get(jaar) || 0) + 1);
-    });
-
-    const verkoopPerJaar = Array.from(verkoopPerJaarMap.entries())
-        .map(([jaar, aantal]) => ({ jaar, aantal }))
-        .sort((a, b) => a.jaar - b.jaar);
+    }
 
     return {
-        // 2-punts (voor backward compatibility)
-        voertuigenOud,
-        voertuigenNieuw,
-        gemHoogteOud: gemiddelde(hoogteOud),
-        gemHoogteNieuw: gemiddelde(hoogteNieuw),
-        kleurenOud: telKleuren(voertuigenOud),
-        kleurenNieuw: telKleuren(voertuigenNieuw),
-        verkoopOud: voertuigenOud.length,
-        verkoopNieuw: voertuigenNieuw.length,
-
-        // RANGE data voor ALLE views
-        hoogtePerJaar,
-        gewichtPerJaar,
-        prijsPerJaar,
-        kleurenPerJaar,
-        verkoopPerJaar
+        merkRuw: merk,
+        merkNetjes: capitalize(merk),
+        jaarVan: jaarMin,
+        jaarTot: jaarMax,
+        totaalEVs: bevVoertuigen.length,
+        verkoopPerJaar,
+        bevKentekens: bevVoertuigen.map((v) => v.kenteken)
     };
+};
+
+
+// ------------------------------------------------------
+// PUBLIEKE API #2
+// haalBevVerkoopVoorMerken(merken[], jaarVan, jaarTot)
+//
+// Dit is basically een "batch" versie van de vorige,
+// handig als je straks meerdere merken tegelijk wilt
+// plotten in één grafiek.
+// ------------------------------------------------------
+export const haalBevVerkoopVoorMerken = async (
+    merken,
+    jaarVan,
+    jaarTot
+) => {
+    const lijst = Array.isArray(merken) ? merken : [];
+    const resultaten = [];
+
+    for (const merk of lijst) {
+        try {
+            const res = await haalBevVerkoopPerJaarVoorMerk(
+                merk,
+                jaarVan,
+                jaarTot
+            );
+            resultaten.push(res);
+        } catch (err) {
+            console.error('Fout bij EV-verkoop ophalen voor merk:', merk, err);
+            resultaten.push({
+                merkRuw: merk,
+                merkNetjes: capitalize(merk),
+                jaarVan,
+                jaarTot,
+                totaalEVs: 0,
+                verkoopPerJaar: [],
+                bevKentekens: [],
+                error: String(err)
+            });
+        }
+    }
+
+    return resultaten;
 };

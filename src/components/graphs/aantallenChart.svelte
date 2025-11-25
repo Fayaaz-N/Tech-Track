@@ -1,31 +1,27 @@
 <script>
     import * as d3 from 'd3';
 
-    // Verwacht:
     // chinaData = { merkNetjes, verkoopPerJaar: [{ jaar, aantal }, ...] }
     // westData  = { merkNetjes, verkoopPerJaar: [{ jaar, aantal }, ...] }
     export let chinaData = null;
     export let westData = null;
 
-    // layout-constanten
     const HEIGHT = 420;
     const MARGIN = { top: 60, right: 40, bottom: 70, left: 80 };
 
-    // interne state
-    let data = [];          // [{ jaar, china, west }, ...]
+    let data = [];
     let WIDTH = 800;
     let innerWidth = 0;
     let innerHeight = 0;
 
-    let x0; // band-scale per jaar
-    let x1; // band-scale binnen jaar (china / west)
-    let y;  // linear scale waarde → hoogte
+    let x0;
+    let x1;
+    let y;
     let ready = false;
 
     const brandKeyChina = 'china';
     const brandKeyWest = 'west';
 
-    // kleuren / labels
     const brandMeta = {
         [brandKeyChina]: {
             kleur: '#e74c3c',
@@ -37,7 +33,6 @@
         }
     };
 
-    // bouw data + scales zodra input verandert
     $: {
         if (!chinaData || !westData) {
             data = [];
@@ -65,7 +60,6 @@
             const maxValue =
                 d3.max(data, (d) => Math.max(d.china, d.west)) || 0;
 
-            // dynamische breedte: hoe meer jaren, hoe breder
             const minWidth = 640;
             const perYear = 90;
             WIDTH =
@@ -101,20 +95,6 @@
             }
         }
     }
-
-    // kleine helper voor car-icon boven een bar
-    const carIcon = (value) => {
-        if (!y) return { bodyY: 0, wheelY: 0 };
-        const top = y(value);
-        const bodyHeight = 20;
-        const wheelRadius = 4;
-
-        return {
-            bodyY: top - bodyHeight - wheelRadius * 0.5,
-            bodyHeight,
-            wheelY: top - wheelRadius * 0.5
-        };
-    };
 </script>
 
 {#if !chinaData || !westData}
@@ -130,7 +110,6 @@
                 xmlns="http://www.w3.org/2000/svg"
         >
             <defs>
-                <!-- zachte schaduw voor balken -->
                 <filter id="barShadow" x="-20%" y="-20%" width="140%" height="140%">
                     <feDropShadow
                             dx="0"
@@ -141,7 +120,7 @@
                 </filter>
             </defs>
 
-            <!-- titel -->
+            <!-- hoofd-titel -->
             <text
                     x={WIDTH / 2}
                     y={24}
@@ -152,19 +131,40 @@
                 Visuele vergelijking: BEV-registraties per jaar
             </text>
 
-            <!-- subtitel -->
-            <text
-                    x={WIDTH / 2}
-                    y={44}
-                    text-anchor="middle"
-                    font-size="14"
-                    fill="#444"
-            >
-                {brandMeta.china.label()} vs {brandMeta.west.label()}
-            </text>
+            <!-- legenda direct onder de titel, horizontaal -->
+            <g transform={`translate(${WIDTH / 2 - 70}, 44)`}>
+                <g>
+                    <rect
+                            x="0"
+                            y="-10"
+                            width="18"
+                            height="18"
+                            rx="4"
+                            ry="4"
+                            fill={brandMeta[brandKeyChina].kleur}
+                    />
+                    <text x="24" y="3" font-size="12">
+                        {brandMeta[brandKeyChina].label()}
+                    </text>
+                </g>
+                <g transform="translate(90,0)">
+                    <rect
+                            x="0"
+                            y="-10"
+                            width="18"
+                            height="18"
+                            rx="4"
+                            ry="4"
+                            fill={brandMeta[brandKeyWest].kleur}
+                    />
+                    <text x="24" y="3" font-size="12">
+                        {brandMeta[brandKeyWest].label()}
+                    </text>
+                </g>
+            </g>
 
             <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-                <!-- licht zebra-achtergrond per jaar -->
+                <!-- zebra-achtergrond per jaar -->
                 {#each data as row, index}
                     <rect
                             x={x0(row.jaar)}
@@ -188,20 +188,51 @@
                     />
                 {/each}
 
-                <!-- "road" onder de bars -->
+                <!-- Y-as lijn -->
+                <line
+                        x1={0}
+                        x2={0}
+                        y1={0}
+                        y2={innerHeight}
+                        stroke="#555"
+                        stroke-width="1.5"
+                />
+
+                <!-- Y-as ticks + labels -->
+                {#each y.ticks(4) as tick}
+                    <g>
+                        <line
+                                x1={-6}
+                                x2={0}
+                                y1={y(tick)}
+                                y2={y(tick)}
+                                stroke="#555"
+                                stroke-width="1"
+                        />
+                        <text
+                                x={-10}
+                                y={y(tick) + 4}
+                                text-anchor="end"
+                                font-size="11"
+                        >
+                            {tick.toLocaleString('nl-NL')}
+                        </text>
+                    </g>
+                {/each}
+
+                <!-- weg (x-as) -->
                 <rect
                         x={-MARGIN.left * 0.4}
-                        y={innerHeight + 18}
+                        y={innerHeight + 5}
                         width={innerWidth + MARGIN.left * 0.8}
                         height={18}
                         fill="#333"
                         rx="9"
                 />
-                <!-- streepjes in de weg -->
                 {#each data as row}
                     <rect
                             x={(x0(row.jaar) || 0) + x0.bandwidth() / 2 - 18}
-                            y={innerHeight + 25}
+                            y={innerHeight + 13}
                             width="36"
                             height="3"
                             fill="#f5f5f5"
@@ -211,7 +242,7 @@
 
                 <!-- Y-as label -->
                 <text
-                        transform={`rotate(-90)`}
+                        transform="rotate(-90)"
                         x={-innerHeight / 2}
                         y={-MARGIN.left + 20}
                         text-anchor="middle"
@@ -220,17 +251,17 @@
                     Aantal BEV-registraties
                 </text>
 
-                <!-- X-as label -->
+                <!-- X-as label iets lager -->
                 <text
                         x={innerWidth / 2}
-                        y={innerHeight + 50}
+                        y={innerHeight + 52}
                         text-anchor="middle"
                         font-size="12"
                 >
                     Jaar
                 </text>
 
-                <!-- Jaar labels onderaan -->
+                <!-- Jaar labels  -->
                 {#each data as row}
                     <text
                             x={(x0(row.jaar) || 0) + x0.bandwidth() / 2}
@@ -242,107 +273,39 @@
                     </text>
                 {/each}
 
-                <!-- Bars + auto-icoontjes -->
+                <!-- Bars -->
                 {#each data as row}
                     <g transform={`translate(${x0(row.jaar)},0)`}>
                         {#each [brandKeyChina, brandKeyWest] as key}
                             {#if row[key] > 0}
-                                {#key `${row.jaar}-${key}`}
-                                    {#await Promise.resolve(row[key]) then value}
-                                        {#if value > 0}
-                                            {@html ''} <!-- force block -->
+                                <g transform={`translate(${x1(key)},0)`}>
+                                    <rect
+                                            x={0}
+                                            y={y(row[key])}
+                                            width={x1.bandwidth()}
+                                            height={innerHeight - y(row[key])}
+                                            fill={brandMeta[key].kleur}
+                                            rx="10"
+                                            ry="10"
+                                            filter="url(#barShadow)"
+                                            opacity="0.9"
+                                    />
 
-                                            <g transform={`translate(${x1(key)},0)`}>
-                                                <!-- bar -->
-                                                <rect
-                                                        x={0}
-                                                        y={y(value)}
-                                                        width={x1.bandwidth()}
-                                                        height={innerHeight - y(value)}
-                                                        fill={brandMeta[key].kleur}
-                                                        rx="10"
-                                                        ry="10"
-                                                        filter="url(#barShadow)"
-                                                        opacity="0.9"
-                                                />
-
-                                                {#if value > 0}
-                                                    {#const icon = carIcon(value)}
-                                                    <!-- auto-body -->
-                                                    <rect
-                                                            x={x1.bandwidth() / 2 - 14}
-                                                            y={icon.bodyY}
-                                                            width="28"
-                                                            height={icon.bodyHeight}
-                                                            rx="7"
-                                                            ry="7"
-                                                            fill={brandMeta[key].kleur}
-                                                    />
-                                                    <!-- wielen -->
-                                                    <circle
-                                                            cx={x1.bandwidth() / 2 - 8}
-                                                            cy={icon.wheelY}
-                                                            r="4"
-                                                            fill="#111"
-                                                    />
-                                                    <circle
-                                                            cx={x1.bandwidth() / 2 + 8}
-                                                            cy={icon.wheelY}
-                                                            r="4"
-                                                            fill="#111"
-                                                    />
-                                                {/if}
-
-                                                <!-- waarde-label bovenop -->
-                                                <text
-                                                        x={x1.bandwidth() / 2}
-                                                        y={y(value) - 8}
-                                                        text-anchor="middle"
-                                                        font-size="11"
-                                                        font-weight="600"
-                                                >
-                                                    {value.toLocaleString('nl-NL')}
-                                                </text>
-                                            </g>
-                                        {/if}
-                                    {/await}
-                                {/key}
+                                    <!-- waarde-label -->
+                                    <text
+                                            x={x1.bandwidth() / 2}
+                                            y={y(row[key]) - 8}
+                                            text-anchor="middle"
+                                            font-size="11"
+                                            font-weight="600"
+                                    >
+                                        {row[key].toLocaleString('nl-NL')}
+                                    </text>
+                                </g>
                             {/if}
                         {/each}
                     </g>
                 {/each}
-            </g>
-
-            <!-- Legenda -->
-            <g transform={`translate(${WIDTH - 220}, ${MARGIN.top + 4})`}>
-                <g>
-                    <rect
-                            x="0"
-                            y="-12"
-                            width="18"
-                            height="18"
-                            rx="4"
-                            ry="4"
-                            fill={brandMeta.china.kleur}
-                    />
-                    <text x="24" y="2" font-size="12">
-                        {brandMeta.china.label()}
-                    </text>
-                </g>
-                <g transform="translate(0,20)">
-                    <rect
-                            x="0"
-                            y="-12"
-                            width="18"
-                            height="18"
-                            rx="4"
-                            ry="4"
-                            fill={brandMeta.west.kleur}
-                    />
-                    <text x="24" y="2" font-size="12">
-                        {brandMeta.west.label()}
-                    </text>
-                </g>
             </g>
         </svg>
     </figure>

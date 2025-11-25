@@ -9,7 +9,7 @@
     export let autosPerIcoon = null;
 
     // car.svg staat in /static → via deze URL
-    const iconPath = '/car.svg';
+    const iconPath = 'src/lib/assets/car.svg';
 
     const MAX_ICONS_PER_YEAR = 60;
 

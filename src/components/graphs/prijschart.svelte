@@ -12,9 +12,6 @@
     const HEIGHT = 560;
     const MARGIN = { top: 40, right: 30, bottom: 60, left: 90 };
 
-    // gekozen punt voor de legenda onder de chart
-    let activePoint = null;
-
     // zelfde sanity-filter als in de rest van je app:
     // alleen prijzen tussen 1.000 en 300.000 euro
     const clampPrice = (raw) => {
@@ -23,11 +20,6 @@
         if (n < 1000 || n > 300000) return null;
         return n;
     };
-
-    const formatEuro = (n) =>
-        typeof n === 'number'
-            ? `€ ${Math.round(n).toLocaleString('nl-NL')}`
-            : '–';
 
     function draw() {
         if (!container) return;
@@ -57,7 +49,6 @@
                     min,
                     max,
                     avg,
-                    aantal: d.aantal ?? null,
                     label: String(d.jaar),
                     // kleuren afwisselen, eerste twee zoals je had
                     color: i % 2 === 0 ? '#1f77b4' : '#ff7f0e'
@@ -70,14 +61,10 @@
             p.textContent =
                 'Geen catalogusprijs-data beschikbaar voor deze selectie.';
             container.appendChild(p);
-            activePoint = null;
             return;
         }
 
-        // standaard actief punt (eerste jaar) als er nog niets gekozen is
-        if (!activePoint) {
-            activePoint = data[0];
-        }
+        // Breedte opschalen met aantal jaren
 
         const innerWidth = WIDTH - MARGIN.left - MARGIN.right;
         const innerHeight = HEIGHT - MARGIN.top - MARGIN.bottom;
@@ -166,14 +153,13 @@
             .attr('stroke-linecap', 'round')
             .attr('opacity', 0.35);
 
-        // gemiddelde-dot (klikbaar)
+        // gemiddelde-dot
         group
             .append('circle')
             .attr('cx', 0)
             .attr('cy', (d) => y(d.avg))
             .attr('r', 7)
             .attr('fill', (d) => d.color)
-            .style('cursor', 'pointer')
             .append('title')
             .text(
                 (d) =>
@@ -185,14 +171,13 @@
                     )} – € ${Math.round(d.max).toLocaleString('nl-NL')}`
             );
 
-        // klik-handler om de legenda te updaten
+        // label rechts naast de dot
         group
-            .selectAll('circle')
-            .on('click', (_event, d) => {
-                activePoint = d;
-            });
-
-        // LET OP: geen tekstlabels meer naast de dot → geen overlap
+            .append('text')
+            .attr('x', 10)
+            .attr('y', (d) => y(d.avg) + 4)
+            .attr('font-size', 11)
+            .text((d) => `€ ${Math.round(d.avg).toLocaleString('nl-NL')}`);
 
         // titel
         svg.append('text')
@@ -214,32 +199,11 @@
 
 <div bind:this={container} class="prijs-chart-container"></div>
 
-<!-- legenda / info-panel onder de grafiek -->
-<section class="prijs-legend">
-    {#if activePoint}
-        <h4>Jaar {activePoint.jaar}</h4>
-        <p>
-            Gemiddelde prijs:
-            <strong>{formatEuro(activePoint.avg)}</strong>
-        </p>
-        <p>
-            Bereik:
-            {formatEuro(activePoint.min)} – {formatEuro(activePoint.max)}<br />
-            Aantal voertuigen:
-            {activePoint.aantal ?? 'onbekend'}
-        </p>
-        <p class="hint">Klik op een andere stip om dat jaar te bekijken.</p>
-    {:else}
-        <p class="hint">
-            Klik op een stip in de grafiek voor details over dat jaar.
-        </p>
-    {/if}
-</section>
-
 <style>
+
     .prijs-chart-container {
         max-width: 100%;
-        margin-left: -20px;
+        /*margin-left:-20px;*/
         overflow-x: visible;
     }
 
@@ -247,20 +211,5 @@
         font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
         sans-serif;
         font-size: 12px;
-    }
-
-    .prijs-legend {
-        margin-top: 0.8rem;
-        font-size: 0.9rem;
-    }
-
-    .prijs-legend h4 {
-        margin-bottom: 0.3rem;
-    }
-
-    .prijs-legend .hint {
-        margin-top: 0.3rem;
-        color: #666;
-        font-size: 0.85rem;
     }
 </style>
