@@ -59,7 +59,7 @@
         background: #ffffff;
         border-radius: 24px;
         padding: 2.5rem 3rem;
-        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+        /*box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);*/
         display: grid;
         grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
         gap: 2.5rem;

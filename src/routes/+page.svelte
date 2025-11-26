@@ -223,12 +223,16 @@
 </main>
 
 <style>
+    body {
+        background:#F5F7FF;
+    }
     .app {
         min-height: 100vh;
         display: flex;
         align-items: stretch;
         justify-content: center;
-        background: #f3f3f3;
+        background: radial-gradient(circle at top, #f5f7ff 0, #e9edf7 40%, #dfe3ef 100%);
+
         box-sizing: border-box;
     }
 
@@ -236,7 +240,7 @@
         width: 100%;
         max-width: 1200px;
         background: #ffffff;
-        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);
+        /*box-shadow: 0 4px 20px rgba(0, 0, 0, 0.05);*/
         margin: 2rem 1rem;
         border-radius: 12px;
         overflow: hidden;

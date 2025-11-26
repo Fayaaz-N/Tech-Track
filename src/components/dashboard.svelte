@@ -13,7 +13,7 @@
 
     // default merken (eerste uit de arrays)
     let chinaMerk = CHINESE_EV_MERKEN[0] || '';
-    let westersMerk = WESTERSE_EV_MERKEN[0] || '';
+    let westersMerk = 'AUDI';
 
     // default periode
     let jaarVan = 2020;
@@ -378,7 +378,7 @@
         align-items: stretch;
         justify-content: center;
         padding: 2.5rem 1.5rem;
-        background: radial-gradient(circle at top, #f5f7ff 0, #e9edf7 40%, #dfe3ef 100%);
+        /*background: radial-gradient(circle at top, #f5f7ff 0, #e9edf7 40%, #dfe3ef 100%);*/
         box-sizing: border-box;
     }
 
@@ -388,7 +388,7 @@
         background: #ffffff;
         border-radius: 24px;
         padding: 2.5rem 2.5rem 2.2rem;
-        box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);
+        /*box-shadow: 0 18px 45px rgba(0, 0, 0, 0.08);*/
         box-sizing: border-box;
         display: flex;
         flex-direction: column;
