@@ -1,4 +1,4 @@
-# 🚗 EV Story – Hoe snel veroveren Chinese EV’s de Nederlandse automarkt?
+# 🚗 Hoe snel veroveren Chinese EV’s de Nederlandse automarkt?
 
 > ⚠️ Let op: de RDW-API is langzaam maar machtig.  
 > De API bevat ~**16 miljoen registraties**.  
@@ -12,31 +12,23 @@ Dat doet ‘ie door **Chinese EV-merken** te vergelijken met **Westerse merken**
 
 ---
 
-## 📦 Inhoud
 
-- [Live demo](#-live-demo)
-- [Over dit project](#-over-dit-project)
-- [Functionaliteiten & schermen](#-functionaliteiten--schermen)
-- [Gebruikte technologieën](#-gebruikte-technologieën)
-- [Architectuur in het kort](#-architectuur-in-het-kort)
-- [Installatie & ontwikkeling](#-installatie--ontwikkeling)
-- [Omgaan met API-keys & RDW-data](#-omgaan-met-api-keys--rdw-data)
-- [Validiteit & beperkingen van de data](#-validiteit--beperkingen-van-de-data)
-- [Gebruik van AI](#-gebruik-van-ai)
-- [Licentie](#-licentie)
-
----
 
 ## 🌐 Live demo
 
 De applicatie is gemaakt als schoolproject voor de **Hogeschool van Amsterdam (HvA)**.
 
-- 🔗 **Productie (demo)**: https://rdw-data-api.vercel.app/
+- 🔗 **Live**: https://rdw-data-api.vercel.app/
 
 Op het **startscherm** kun je:
 
 - Een uitleg lezen over de onderzoeksvraag
 - Doorklikken naar het dashboard om zelf merken en jaartallen te kiezen
+
+Of download het project via github: https://github.com/Fayaaz-N/Tech-Track/tree/main
+
+Ga naar je terminal naar de map en typ: 
+```npm run dev``` om de applicatie te starten. 
 
 ---
 
