@@ -24,14 +24,16 @@
 
     const brandMeta = {
         [brandKeyChina]: {
-            kleur: '#e74c3c',
-            label: () => (chinaData?.merkNetjes || 'Chinees merk')
+            kleur: '#e74c3c'
         },
         [brandKeyWest]: {
-            kleur: '#2980b9',
-            label: () => (westData?.merkNetjes || 'Westers merk')
+            kleur: '#2980b9'
         }
     };
+
+    // Reactieve labels die direct aan de props hangen
+    $: chinaLabel = chinaData?.merkNetjes || 'Chinees merk';
+    $: westLabel = westData?.merkNetjes || 'Westers merk';
 
     $: {
         if (!chinaData || !westData) {
@@ -144,7 +146,7 @@
                             fill={brandMeta[brandKeyChina].kleur}
                     />
                     <text x="24" y="3" font-size="12">
-                        {brandMeta[brandKeyChina].label()}
+                        {chinaLabel}
                     </text>
                 </g>
                 <g transform="translate(90,0)">
@@ -158,7 +160,7 @@
                             fill={brandMeta[brandKeyWest].kleur}
                     />
                     <text x="24" y="3" font-size="12">
-                        {brandMeta[brandKeyWest].label()}
+                        {westLabel}
                     </text>
                 </g>
             </g>

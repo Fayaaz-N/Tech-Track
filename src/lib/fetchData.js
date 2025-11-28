@@ -190,7 +190,7 @@ const bepaalBevKentekens = async (kentekens) => {
         const params = new URLSearchParams({
             $select: 'kenteken, brandstof_omschrijving',
             $where: `kenteken IN (${inList})`,
-            $limit: '50000' // we vragen alleen deze subset van kentekens op
+            $limit: '500' // we vragen alleen deze subset van kentekens op
         });
 
         const rows = await fetchRdwJson(`${RDW_FUEL_URL}?${params}`);
@@ -248,7 +248,7 @@ const haalVoertuigenVoorMerkEnJaren = async (merk, jaarVan, jaarTot) => {
     const params = new URLSearchParams({
         $select: 'kenteken, merk, datum_eerste_toelating',
         $where: whereParts.join(' AND '),
-        $limit: '50000' // veiligheidslimiet; dit kun je later tunen
+        $limit: '500' // veiligheidslimiet; dit kun je later tunen
     });
 
     const data = await fetchRdwJson(`${RDW_VEHICLES_URL}?${params}`);
