@@ -226,19 +226,31 @@
 
         <!-- GRAFIEK -->
         <section class="ev-chart-section">
-            {#if chinaData && westData}
-                <AantallenChart {chinaData} {westData} />
-            {:else if loading && !firstLoadDone}
-                <p class="chart-placeholder">
-                    De grafiek wordt geladen…
-                </p>
-            {:else}
-                <p class="chart-placeholder">
-                    Nog geen data beschikbaar voor de grafiek.
-                    Vul beide merken en de periode in en klik op
-                    <strong>Laad data</strong>.
-                </p>
-            {/if}
+            <div
+                    class="ev-chart-wrapper"
+                    class:is-loading={loading && firstLoadDone}
+            >
+                {#if chinaData && westData}
+                    <AantallenChart {chinaData} {westData} />
+                {:else if loading && !firstLoadDone}
+                    <p class="chart-placeholder">
+                        De grafiek wordt geladen…
+                    </p>
+                {:else}
+                    <p class="chart-placeholder">
+                        Nog geen data beschikbaar voor de grafiek.
+                        Vul beide merken en de periode in en klik op
+                        <strong>Laad data</strong>.
+                    </p>
+                {/if}
+
+                {#if loading && firstLoadDone}
+                    <div class="chart-loading-overlay">
+                        <div class="chart-loading-spinner"></div>
+                        <p>Grafiek wordt vernieuwd…</p>
+                    </div>
+                {/if}
+            </div>
         </section>
 
         <!-- RESULTATEN -->
@@ -592,6 +604,16 @@
         background: #ffffff;
     }
 
+    .ev-chart-wrapper {
+        position: relative;
+        min-height: 220px;
+    }
+
+    .ev-chart-wrapper.is-loading svg {
+        opacity: 0.4;
+        transition: opacity 0.15s ease-out;
+    }
+
     .chart-placeholder {
         font-size: 0.9rem;
         color: #666;
@@ -600,6 +622,42 @@
 
     .chart-placeholder strong {
         font-weight: 600;
+    }
+
+    .chart-loading-overlay {
+        position: absolute;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 0.6rem;
+        background: rgba(255, 255, 255, 0.78);
+        backdrop-filter: blur(2px);
+        opacity: 0;
+        pointer-events: none;
+        transition: opacity 0.15s ease-out;
+        border-radius: 16px;
+    }
+
+    .ev-chart-wrapper.is-loading .chart-loading-overlay {
+        opacity: 1;
+        pointer-events: auto;
+    }
+
+    .chart-loading-spinner {
+        width: 26px;
+        height: 26px;
+        border-radius: 50%;
+        border: 3px solid #d3d4e0;
+        border-top-color: #111117;
+        animation: spin 0.8s linear infinite;
+    }
+
+    .chart-loading-overlay p {
+        margin: 0;
+        font-size: 0.85rem;
+        color: #444;
     }
 
     /* RESULTATEN */
