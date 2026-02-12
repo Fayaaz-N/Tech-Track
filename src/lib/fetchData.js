@@ -30,7 +30,7 @@ const RDW_FUEL_URL = 'https://opendata.rdw.nl/resource/8ys7-d773.json';
 // we willen NIET langer dan nodig in het verleden zoeken.
 // Alles vóór 2020 negeren we gewoon in onze queries.
 // ------------------------------------------------------
-const MIN_JAAR_DEFAULT = 2023;
+const MIN_JAAR_DEFAULT = 2020;
 
 // ------------------------------------------------------
 // Chinese EV-merken (ruwe lijst die je zelf mag tunen)
@@ -47,8 +47,8 @@ export const CHINESE_EV_MERKEN = [
     'ORA',
     'WEY',
     'DFSK',
-    'LYNK & CO',
-    'MG'
+    'LYNK & CO',   // Chinees (Geely) maar vaak "Europees" gepositioneerd
+    'MG'           // Merk is Brits, eigenaar Chinees (SAIC)
 ];
 
 // ------------------------------------------------------
@@ -115,14 +115,17 @@ const bepaalJaar = (rawDatum) => {
 // Helper om een jaar-range WHERE te maken
 // jaarVan / jaarTot zijn gewone getallen, zoals 2015 / 2024
 // ------------------------------------------------------
-const maakJaarWhere = (jaarVan) => {
+const maakJaarWhere = (jaarVan, jaarTot) => {
     const min = Number.isFinite(jaarVan) ? jaarVan : null;
+    const max = Number.isFinite(jaarTot) ? jaarTot : null;
 
     const parts = [];
 
     if (min != null) {
         parts.push(`datum_eerste_toelating >= ${min}0101`);
-        parts.push(`datum_eerste_toelating <= ${min}1231`);
+    }
+    if (max != null) {
+        parts.push(`datum_eerste_toelating <= ${max}1231`);
     }
 
     return parts.join(' AND ');
@@ -187,7 +190,7 @@ const bepaalBevKentekens = async (kentekens) => {
         const params = new URLSearchParams({
             $select: 'kenteken, brandstof_omschrijving',
             $where: `kenteken IN (${inList})`,
-            $limit: '300000'
+            $limit: '1000000' // we vragen alleen deze subset van kentekens op
         });
 
         const rows = await fetchRdwJson(`${RDW_FUEL_URL}?${params}`);
@@ -220,21 +223,24 @@ const bepaalBevKentekens = async (kentekens) => {
 };
 
 // ------------------------------------------------------
-// VOERTUIGEN per MERK + JAAR ophalen
+// VOERTUIGEN per MERK + JAAR-RANGE ophalen
 // (nog zonder te filteren op BEV / brandstof)
 //
 // LET OP: hier klemmen we ook nog even tegen MIN_JAAR_DEFAULT,
 // voor het geval iemand deze helper los gebruikt.
 // ------------------------------------------------------
-const haalVoertuigenVoorMerkEnJaar = async (merk, jaar) => {
-    const norm = Math.max(MIN_JAAR_DEFAULT, Number(jaar));
+const haalVoertuigenVoorMerkEnJaren = async (merk, jaarVan, jaarTot) => {
+    // extra veiligheid: nooit vóór 2020 query'en, ook als iemand
+    // hier direct een ouder jaar in stopt
+    const normVan = Math.max(MIN_JAAR_DEFAULT, Number(jaarVan));
+    const normTot = Number(jaarTot);
 
     const whereParts = [
         "voertuigsoort = 'Personenauto'",
         maakMerkWhere(merk)
     ];
 
-    const jaarWhere = maakJaarWhere(norm);
+    const jaarWhere = maakJaarWhere(normVan, normTot);
     if (jaarWhere) {
         whereParts.push(jaarWhere);
     }
@@ -242,7 +248,7 @@ const haalVoertuigenVoorMerkEnJaar = async (merk, jaar) => {
     const params = new URLSearchParams({
         $select: 'kenteken, merk, datum_eerste_toelating',
         $where: whereParts.join(' AND '),
-        $limit: '300000'
+        $limit: '100000' // veiligheidslimiet; dit kun je later tunen
     });
 
     const data = await fetchRdwJson(`${RDW_VEHICLES_URL}?${params}`);
@@ -259,27 +265,60 @@ const haalVoertuigenVoorMerkEnJaar = async (merk, jaar) => {
 
 // ------------------------------------------------------
 // PUBLIEKE API #1
-// haalBevVerkoopPerJaarVoorMerk(merk, jaar)
+// haalBevVerkoopPerJaarVoorMerk(merk, jaarVan, jaarTot)
 //
-// - Haalt alle voertuigen voor dat merk in dat jaar op
+// - Haalt alle voertuigen voor dat merk in de jaar-range op
 // - Checkt via brandstof-tabel welke kentekens BEV zijn
-// - Telt het aantal BEV's
+// - Telt per jaar hoeveel BEV's er zijn
+//
+// Dit is precies wat je nodig hebt om links (China) en
+// rechts (Westers) te vergelijken op je dashboard.
 // ------------------------------------------------------
-export const haalBevVerkoopPerJaarVoorMerk = async (merk, jaar) => {
-    // 0) basis-normalisatie van het ingevoerde jaar
-    const v = Number(jaar);
-    const jaarMin = Number.isFinite(v) ? v : MIN_JAAR_DEFAULT;
+export const haalBevVerkoopPerJaarVoorMerk = async (
+    merk,
+    jaarVan,
+    jaarTot
+) => {
+    // 0) basis-normalisatie van de ingevoerde jaren
+    const v = Number(jaarVan);
+    const t = Number(jaarTot);
 
-    // 1) voertuigen voor dit merk + jaar ophalen
-    const voertuigen = await haalVoertuigenVoorMerkEnJaar(merk, jaarMin);
+    let jaarMin = Math.min(v, t);
+    let jaarMax = Math.max(v, t);
+
+    // 0b) performance-keuze:
+    // we willen ALTIJD minimaal vanaf 2020 werken,
+    // ook als de gebruiker per ongeluk een ouder jaar kiest.
+    if (!Number.isFinite(jaarMin) || !Number.isFinite(jaarMax)) {
+        // als er iets geks binnenkomt, doe een simpele fallback
+        jaarMin = MIN_JAAR_DEFAULT;
+        jaarMax = new Date().getFullYear();
+    }
+
+    jaarMin = Math.max(MIN_JAAR_DEFAULT, jaarMin);
+
+    // 1) voertuigen voor dit merk + periode ophalen
+    const voertuigen = await haalVoertuigenVoorMerkEnJaren(
+        merk,
+        jaarMin,
+        jaarMax
+    );
 
     if (!voertuigen.length) {
+        // zelfs als er geen voertuigen zijn, geven we de range terug
+        // met overal 0 → dan lopen jouw grafieken straks mooi door
+        const verkoopPerJaarLeeg = [];
+        for (let jaar = jaarMin; jaar <= jaarMax; jaar++) {
+            verkoopPerJaarLeeg.push({ jaar, aantal: 0 });
+        }
+
         return {
             merkRuw: merk,
             merkNetjes: capitalize(merk),
-            jaar: jaarMin,
+            jaarVan: jaarMin,
+            jaarTot: jaarMax,
             totaalEVs: 0,
-            verkoopPerJaar: [{ jaar: jaarMin, aantal: 0 }],
+            verkoopPerJaar: verkoopPerJaarLeeg,
             bevKentekens: []
         };
     }
@@ -294,37 +333,70 @@ export const haalBevVerkoopPerJaarVoorMerk = async (merk, jaar) => {
         bevSet.has(v.kenteken)
     );
 
+    // 4) aggregeren per jaar (alleen jaren waar echt iets is)
+    const perJaarMap = new Map();
+
+    bevVoertuigen.forEach((v) => {
+        const jaar = v.jaar;
+        if (!perJaarMap.has(jaar)) {
+            perJaarMap.set(jaar, 0);
+        }
+        perJaarMap.set(jaar, perJaarMap.get(jaar) + 1);
+    });
+
+    // 5) nu bouwen we een VOLLEDIGE reeks van jaarMin → jaarMax
+    //    als er geen entry is in perJaarMap → aantal = 0
+    const verkoopPerJaar = [];
+    for (let jaar = jaarMin; jaar <= jaarMax; jaar++) {
+        verkoopPerJaar.push({
+            jaar,
+            aantal: perJaarMap.get(jaar) || 0
+        });
+    }
+
     return {
         merkRuw: merk,
         merkNetjes: capitalize(merk),
-        jaar: jaarMin,
+        jaarVan: jaarMin,
+        jaarTot: jaarMax,
         totaalEVs: bevVoertuigen.length,
-        verkoopPerJaar: [{ jaar: jaarMin, aantal: bevVoertuigen.length }],
+        verkoopPerJaar,
         bevKentekens: bevVoertuigen.map((v) => v.kenteken)
     };
 };
 
+
 // ------------------------------------------------------
 // PUBLIEKE API #2
-// haalBevVerkoopVoorMerken(merken[], jaar)
+// haalBevVerkoopVoorMerken(merken[], jaarVan, jaarTot)
 //
-// Dit is basic een "batch" versie van de vorige,
-// handig als je straks meerdere merken tegelijk wilt plotten in één grafiek.
+// Dit is basically een "batch" versie van de vorige,
+// handig als je straks meerdere merken tegelijk wilt
+// plotten in één grafiek.
 // ------------------------------------------------------
-export const haalBevVerkoopVoorMerken = async (merken, jaar) => {
+export const haalBevVerkoopVoorMerken = async (
+    merken,
+    jaarVan,
+    jaarTot
+) => {
     const lijst = Array.isArray(merken) ? merken : [];
     const resultaten = [];
 
     for (const merk of lijst) {
         try {
-            const res = await haalBevVerkoopPerJaarVoorMerk(merk, jaar);
+            const res = await haalBevVerkoopPerJaarVoorMerk(
+                merk,
+                jaarVan,
+                jaarTot
+            );
             resultaten.push(res);
         } catch (err) {
             console.error('Fout bij EV-verkoop ophalen voor merk:', merk, err);
             resultaten.push({
                 merkRuw: merk,
                 merkNetjes: capitalize(merk),
-                jaar,
+                jaarVan,
+                jaarTot,
                 totaalEVs: 0,
                 verkoopPerJaar: [],
                 bevKentekens: [],
