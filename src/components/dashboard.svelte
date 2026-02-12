@@ -16,7 +16,10 @@
     let westersMerk = 'AUDI';
 
     // default periode
-    let jaarVan = 2020;
+    // let jaarVan = 2020;
+    // let jaarTot = 2025;
+
+    let jaarVan = 2023;
     let jaarTot = 2025;
 
     // resultaat-objecten
