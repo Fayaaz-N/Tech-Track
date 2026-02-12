@@ -92,9 +92,9 @@
     };
 
     // bij het tonen van het dashboard meteen 1x data laden
-    onMount(() => {
-        laadVerkoopData();
-    });
+  //  onMount(() => {
+  //      laadVerkoopData();
+  //  });
 </script>
 
 <main class="ev-dashboard-page">
