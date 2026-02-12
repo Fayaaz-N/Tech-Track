@@ -12,7 +12,7 @@
     const dispatch = createEventDispatcher();
 
     // default merken (eerste uit de arrays)
-    let chinaMerk = CHINESE_EV_MERKEN[0] || '';
+    let chinaMerk = CHINESE_EV_MERKEN[2] || '';
     let westersMerk = 'AUDI';
 
     // default periode
