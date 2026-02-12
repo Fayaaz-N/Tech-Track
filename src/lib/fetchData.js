@@ -248,7 +248,7 @@ const haalVoertuigenVoorMerkEnJaren = async (merk, jaarVan, jaarTot) => {
     const params = new URLSearchParams({
         $select: 'kenteken, merk, datum_eerste_toelating',
         $where: whereParts.join(' AND '),
-        $limit: '100000' // veiligheidslimiet; dit kun je later tunen
+        $limit: '10000000000' // veiligheidslimiet; dit kun je later tunen
     });
 
     const data = await fetchRdwJson(`${RDW_VEHICLES_URL}?${params}`);
